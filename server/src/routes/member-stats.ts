@@ -11,6 +11,7 @@ import { addDaysStr, streakStats } from './leaderboard.ts';
 import { birthdayIn } from './snapshot.ts';
 import { STICKER_PACKS } from '../stickers.ts';
 import { earnedBadges } from '../badges.ts';
+import { requestLang } from '../i18n.ts';
 import { minutesOf, pagesOf, readingPercent, type ReadingProgress } from '../reading.ts';
 import { ErrorSchema, MemberStatsSchema, StatsPeriodSchema } from '../schemas.ts';
 
@@ -219,7 +220,7 @@ memberStatsRoutes.openapi(
           packsOwned,
           packsTotal: STICKER_PACKS.length,
           books: finished.length,
-        }),
+        }, requestLang(c)),
         birthday,
       },
       200,

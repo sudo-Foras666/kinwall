@@ -6,6 +6,7 @@
 // webhooks (nothing here emits) or the export (routes/data.ts): it's about this server's sign-ins.
 // Most of it stays out of the family's notifications; a new passkey and a recovery-code sign-in
 // also push to parent devices (pushGrownUps), since a parent should notice those right away.
+import { loadLangs, type Lang } from '../i18n.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { createRouter } from '../router.ts';
@@ -73,7 +74,8 @@ export async function deviceOwnerEvent(db: KinwallDb, device: string, owner: str
 // A push to every parent device (full access) that has notifications on, in the background so a
 // sign-in never waits on a push service. Not in the family's feed: the record is the security log.
 const parentSubs = "SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.scope = 'admin'";
-export function pushGrownUps(c: Context<{ Bindings: Env }>, payload: { title: string; body: string }): void {
+/** `payload` is the words, or writes them in a language (each device's: its owner's, else the family's). */
+export function pushGrownUps(c: Context<{ Bindings: Env }>, payload: { title: string; body: string } | ((lang: Lang) => { title: string; body: string })): void {
   let ctx: WaitCtx | undefined;
   try {
     ctx = c.executionCtx;
@@ -83,7 +85,8 @@ export function pushGrownUps(c: Context<{ Bindings: Env }>, payload: { title: st
   const env = c.env;
   waitUntil(ctx, (async () => {
     const { results } = await env.DB.prepare(parentSubs).all<Parameters<typeof sendToSub>[2]>();
-    for (const row of results) await sendToSub(env, env.DB, row, { ...payload, url: '/#/settings?tab=access&section=security-activity', tag: 'security' });
+    const langs = typeof payload === 'function' && results.length ? await loadLangs(env.DB) : null;
+    for (const row of results) await sendToSub(env, env.DB, row, { ...(typeof payload === 'function' ? payload(langs!.device(row.api_key_id)) : payload), url: '/#/settings?tab=access&section=security-activity', tag: 'security' });
   })());
 }
 

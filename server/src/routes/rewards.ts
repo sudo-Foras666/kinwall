@@ -5,6 +5,7 @@
 // (display keys, see auth.ts) list, redeem and pick a goal, a member's own device only for them.
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
+import { tr, trn, type Lang } from '../i18n.ts';
 import { createRouter } from '../router.ts';
 import type { Env } from '../env.ts';
 import { emit } from '../bus.ts';
@@ -41,7 +42,7 @@ export const toRedemptionApi = (r: RedemptionRow): z.infer<typeof RedemptionSche
 const json = <T extends z.ZodTypeAny>(schema: T, description = 'ok') => ({ description, content: { 'application/json': { schema } } });
 const err = (description: string) => json(ErrorSchema, description);
 const label = (r: { emoji: string | null; title: string }) => (r.emoji ? `${r.emoji} ${r.title}` : r.title);
-const pts = (n: number) => `${n} point${n === 1 ? '' : 's'}`;
+const pointsIn = (lang: Lang, n: number) => trn(lang, n, '{n} point', '{n} points');
 
 function execCtx(c: Context<{ Bindings: Env }>) {
   try {
@@ -262,10 +263,9 @@ rewardsRoutes.openapi(
     }
     emit(c, 'reward.redeemed', { id: row.id, rewardId: id, memberId, title: row.title, emoji: row.emoji, cost: row.cost, status });
     if (status === 'pending') {
-      const name = (await memberName(c, memberId)) ?? 'Someone';
+      const name = await memberName(c, memberId);
       notifyChoreApproval(c.env, execCtx(c), 'parents', `reward:${row.id}`, {
-        title: `${name} wants ${label(row)} (${pts(row.cost)}). Approve?`,
-        body: 'Open Rewards to approve it or say not this time.',
+        text: (lang) => ({ title: tr(lang, '{name} wants {reward} ({points}). Approve?', { name: name ?? tr(lang, 'Someone'), reward: label(row), points: pointsIn(lang, row.cost) }), body: tr(lang, 'Open Rewards to approve it or say not this time.') }),
         url: '/#/rewards',
         memberIds: [memberId],
       });
@@ -424,8 +424,10 @@ rewardsRoutes.openapi(
     }
     emit(c, 'reward.declined', { id, rewardId: row.reward_id, memberId: row.member_id, title: row.title, emoji: row.emoji, cost: row.cost, note });
     notifyChoreApproval(c.env, execCtx(c), { owner: row.member_id }, `reward-no:${id}`, {
-      title: `Not this time: ${label(row)}`,
-      body: note ? `${note} Your ${pts(row.cost)} are back.` : `Your ${pts(row.cost)} are back.`,
+      text: (lang) => {
+        const back = tr(lang, 'Your {points} are back.', { points: pointsIn(lang, row.cost) });
+        return { title: tr(lang, 'Not this time: {reward}', { reward: label(row) }), body: note ? `${note} ${back}` : back };
+      },
       url: `/#/rewards/${row.member_id}`,
       memberIds: [row.member_id],
     });

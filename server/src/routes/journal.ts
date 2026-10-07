@@ -24,6 +24,7 @@
 // - a kid's is off until a parent allows it (journal_private_allowed, a parent's device); then the kid
 //   turns it on or off from their own device. Disallowing stops new private entries; old ones stay private.
 // Every change writes a line in the family's notification feed (kind 'privacy'), never silently.
+import { loadLangs, tr, type Lang } from '../i18n.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { createRouter } from '../router.ts';
@@ -285,7 +286,9 @@ journalRoutes.openapi(
     const body = c.req.valid('json');
     const own = (await journalOwner(c)) === id;
     const next = { ...m };
-    const log: { title: string; body: string }[] = [];
+    // Each change: the English summary for the Security log, and the note in the member's language.
+    const log: { title: string; note: (lang: Lang) => { title: string; body: string } }[] = [];
+    const entry = (title: string, body: string, vars: Record<string, string>) => ({ title: tr('en', title, vars), note: (lang: Lang) => ({ title: tr(lang, title, vars), body: tr(lang, body, vars) }) });
     if (body.allowed !== undefined) {
       if ((await requestKey(c))?.scope !== 'admin' || (await isConnectedApp(c))) return c.json({ error: "A parent decides this, from a parent's device." }, 403);
       if (m.grown_up) return c.json({ error: `${m.name} is a grown-up: they decide for themselves.` }, 400);
@@ -293,8 +296,8 @@ journalRoutes.openapi(
         next.journal_private_allowed = body.allowed ? 1 : 0;
         if (!body.allowed) next.journal_private = null; // allowing again starts off
         log.push(body.allowed
-          ? { title: `${m.name} can keep a private journal`, body: `${m.name} can turn it on from their own device. Parents will see the mood, not the words.` }
-          : { title: `${m.name}'s private journal is off`, body: 'New entries can be read on parent devices. Entries already private stay private.' });
+          ? entry('{name} can keep a private journal', '{name} can turn it on from their own device. Parents will see the mood, not the words.', { name: m.name })
+          : entry("{name}'s private journal is off", 'New entries can be read on parent devices. Entries already private stay private.', { name: m.name }));
       }
     }
     if (body.private !== undefined) {
@@ -302,8 +305,8 @@ journalRoutes.openapi(
       if (!m.grown_up && !next.journal_private_allowed) return c.json({ error: `A parent hasn't turned on a private journal for ${m.name}.` }, 403);
       if (privateNow(next) !== body.private) {
         log.push(body.private
-          ? { title: `${m.name}'s journal is private`, body: 'Only their own devices read new entries. Parents see the mood, not the words.' }
-          : { title: `${m.name}'s journal is shared again`, body: 'New entries can be read on parent devices. Entries written while it was private stay private.' });
+          ? entry("{name}'s journal is private", 'Only their own devices read new entries. Parents see the mood, not the words.', { name: m.name })
+          : entry("{name}'s journal is shared again", 'New entries can be read on parent devices. Entries written while it was private stay private.', { name: m.name }));
       }
       next.journal_private = body.private ? 1 : 0;
     }
@@ -313,7 +316,8 @@ journalRoutes.openapi(
       db.prepare('UPDATE members SET journal_private = ?, journal_private_allowed = ? WHERE id = ?').bind(next.journal_private, next.journal_private_allowed ?? 0, id),
       ...log.flatMap((l) => securityEventStmts(db, { kind: 'journal.privacy', summary: l.title, by, about: id })),
     ]);
-    for (const l of log) await recordNotification(c.env.DB, { kind: 'privacy', ...l, url: `/#/journal/${id}`, memberIds: [id], source: 'system' });
+    const lang = log.length ? (await loadLangs(c.env.DB)).member(id) : 'en';
+    for (const l of log) await recordNotification(c.env.DB, { kind: 'privacy', ...l.note(lang), url: `/#/journal/${id}`, memberIds: [id], source: 'system' });
     emit(c, 'member.changed', { id });
     const p = privacyOf(next);
     return c.json({ ...p, mine: own, canChange: own && p.allowed }, 200);

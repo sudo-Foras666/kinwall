@@ -61,6 +61,7 @@ import { securityEventsRoutes } from './routes/security-events.ts';
 import { newscastRoutes } from './routes/newscast.ts';
 import { mediaRoutes } from './routes/media.ts';
 import { handleMcp } from './mcp.ts';
+import { requestLang, trMessage } from './i18n.ts';
 
 // Keep in sync with web/public/_headers (Workers serves the UI with that file; Node/Docker with this).
 // blob: = Paint drawings; Met + Picsum = the quiet-hours screensaver (per display, off by default).
@@ -119,6 +120,25 @@ export function createApp() {
     if (/^\/api\/oauth\/[^/]+\/callback$/.test(c.req.path)) return; // its hand-back page sets its own, stricter one (routes/oauth.ts)
     const isDocs = c.req.path === '/docs' || c.req.path.startsWith('/docs/') || c.req.path === '/openapi.json';
     c.header('Content-Security-Policy', isDocs ? CSP_DOCS : CSP_DEFAULT);
+  });
+
+  // Error messages in the asker's language (i18n.ts): every { error } answer, from a route, the
+  // validation hook or onError, goes out in the language of its Accept-Language header. English
+  // (no header, or anything else) is left exactly as the route wrote it.
+  app.use('*', async (c, next) => {
+    await next();
+    if (c.res.status < 400 || !c.res.headers.get('Content-Type')?.includes('application/json')) return;
+    const lang = requestLang(c);
+    if (lang === 'en') return;
+    const body = await c.res.clone().json().catch(() => null) as { error?: unknown } | null;
+    if (!body || typeof body.error !== 'string') return;
+    const error = trMessage(lang, body.error);
+    if (error === body.error) return;
+    const headers = new Headers(c.res.headers);
+    headers.delete('Content-Length');
+    const status = c.res.status;
+    c.res = undefined; // replace, not merge: hono's setter would copy the old headers back
+    c.res = new Response(JSON.stringify({ ...body, error }), { status, headers });
   });
 
   app.use('/api/*', async (c, next) => {

@@ -1,3 +1,4 @@
+import { loadLangs, tr, type Lang } from '../i18n.ts';
 import type { KinwallDb } from '../db.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import { createRouter } from '../router.ts';
@@ -245,13 +246,14 @@ export async function grownUpChangeStmts(c: Context<{ Bindings: Env }>, id: stri
 }
 /** After that batch: tell them, and parent devices. */
 export async function noteGrownUpChange(c: Context<{ Bindings: Env }>, id: string, name: string, grownUp: boolean): Promise<void> {
-  const note = {
-    title: grownUpTitle(name, grownUp),
-    body: grownUp
-      ? `Changed on a parent's device. ${name}'s private journal entries open only on ${name}'s own phone or computer.`
-      : `What ${name} wrote in private as a grown-up stays private. It opens again only on ${name}'s own phone or computer, once ${name} is a grown-up again. New entries aren't private unless a parent allows it.`,
-  };
-  await recordNotification(c.env.DB, { kind: 'privacy', ...note, url: `/#/journal/${id}`, memberIds: [id], source: 'system' });
+  // In the reader's language (i18n.ts): theirs for their feed row, each parent device's for the push.
+  const note = (lang: Lang) => ({
+    title: tr(lang, grownUp ? '{name} is now marked as a grown-up' : '{name} is no longer marked as a grown-up', { name }),
+    body: tr(lang, grownUp
+      ? "Changed on a parent's device. {name}'s private journal entries open only on {name}'s own phone or computer."
+      : "What {name} wrote in private as a grown-up stays private. It opens again only on {name}'s own phone or computer, once {name} is a grown-up again. New entries aren't private unless a parent allows it.", { name }),
+  });
+  await recordNotification(c.env.DB, { kind: 'privacy', ...note((await loadLangs(c.env.DB)).member(id)), url: `/#/journal/${id}`, memberIds: [id], source: 'system' });
   pushGrownUps(c, note);
 }
 

@@ -1,6 +1,7 @@
 // One-time recovery codes: the family's second way in if every passkey device is lost. A set of
 // 8 codes is shown once; only SHA-256 hashes are stored. Using one mints the same 30-day admin
 // session key a passkey login does.
+import { tr } from '../i18n.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import { createRouter } from '../router.ts';
 import { actorOf, createApiKey, sha256Hex } from '../auth.ts';
@@ -116,7 +117,7 @@ recoveryRoutes.openapi(
     console.log(`Kinwall: signed in with a recovery code (${row?.n ?? 0} left)`);
     const left = row?.n ?? 0;
     await recordSecurityEvent(db, { kind: 'signin.recovery', summary: `Recovery code used to sign in (${left} left)`, detail: { remaining: left } });
-    pushGrownUps(c, { title: '🔐 Recovery code used to sign in', body: `${left} of the codes are left. If that wasn't you, make new codes and check Settings → Access.` });
+    pushGrownUps(c, (lang) => ({ title: tr(lang, '🔐 Recovery code used to sign in'), body: tr(lang, "{n} of the codes are left. If that wasn't you, make new codes and check Settings → Access.", { n: left }) }));
     return c.json({ key: session.key, expiresAt, remaining: row?.n ?? 0 }, 200);
   },
 );

@@ -46,6 +46,8 @@ Kinwall comes in **English** and **Deutsch** (German). Everyone picks their own:
 
 Dates and weekday names follow the language too. Parts of the app that aren't translated yet show in English. Things the family typed in (chore names, lists, events) stay as they were written.
 
+Notifications follow the person too: reminders, check-in and medicine reminders, approvals and the energy battery's heads-up arrive in the language of whoever the device belongs to. A device that belongs to no one (a wall screen, a shared phone) and the family's notification list use the family's language: German when everyone who picked a language picked German, otherwise English. Messages from the server, like "Not enough points", badges, Insights and the battery's reasons, come in the language the app is showing.
+
 ## What's on it
 
 Pick **Today**, **Week**, **Month**, **Year** or **All time** at the top. Days follow the family's time zone and the week starts on the day set in [Settings → General](../settings/general.md).

@@ -5,6 +5,7 @@
 // allow-list: wall screens and kids' devices can't reach these. Award-only: no deductions.
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
+import { tr, trn } from '../i18n.ts';
 import { createRouter } from '../router.ts';
 import type { Env } from '../env.ts';
 import { emit } from '../bus.ts';
@@ -63,8 +64,7 @@ bonusPointsRoutes.openapi(
     const award = toApi(row);
     emit(c, 'points.awarded', { id: award.id, memberId: award.memberId, points: award.points, note: award.note, date: award.date });
     notifyChoreApproval(c.env, execCtx(c), { owner: row.member_id }, `bonus:${row.id}`, {
-      title: `🎉 You got ${row.amount} bonus point${row.amount === 1 ? '' : 's'}`,
-      body: row.note ?? 'From a grown-up. Nice one!',
+      text: (lang) => ({ title: trn(lang, row.amount, '🎉 You got {n} bonus point', '🎉 You got {n} bonus points'), body: row.note ?? tr(lang, 'From a grown-up. Nice one!') }),
       url: '/#/chores',
       memberIds: [row.member_id],
     });

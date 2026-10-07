@@ -1,5 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
+import { tr } from '../i18n.ts';
 import { createRouter } from '../router.ts';
 import type { Env } from '../env.ts';
 import { hostTimezone } from '../env.ts';
@@ -427,8 +428,7 @@ export async function completeChore(c: Context<{ Bindings: Env }>, id: string, d
     emit(c, 'chore.pending', { id, date, title: chore.title, memberId: who });
     const name = who ? (await c.env.DB.prepare('SELECT name FROM members WHERE id = ?').bind(who).first<{ name: string }>())?.name : null;
     notifyChoreApproval(c.env, execCtx(c), 'parents', `approve:${id}:${date}`, {
-      title: `${name ?? 'Someone'} finished ${chore.title}. Approve?`,
-      body: 'Open Chores to approve it or say not yet.',
+      text: (lang) => ({ title: tr(lang, '{name} finished {chore}. Approve?', { name: name ?? tr(lang, 'Someone'), chore: chore.title }), body: tr(lang, 'Open Chores to approve it or say not yet.') }),
       url: '/#/chores',
       memberIds: who ? [who] : [],
     });
@@ -609,8 +609,7 @@ choresRoutes.openapi(
     emit(c, 'chore.rejected', { id, date, title: row.title, memberId: row.member_id, note });
     if (row.member_id) {
       notifyChoreApproval(c.env, execCtx(c), { owner: row.member_id }, `notyet:${id}:${date}:${now}`, {
-        title: `Not yet: ${row.title}`,
-        body: note ?? 'Give it another go, then tick it again.',
+        text: (lang) => ({ title: tr(lang, 'Not yet: {chore}', { chore: row.title }), body: note ?? tr(lang, 'Give it another go, then tick it again.') }),
         url: '/#/chores',
         memberIds: [row.member_id],
       });
