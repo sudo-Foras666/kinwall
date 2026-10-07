@@ -2,6 +2,7 @@
 // a registered passkey logs in via /login/options+/login/verify and mints a short-lived session
 // key (an api_keys row, kind='session') instead of the permanent admin key. See webauthn.ts for
 // the rpID/verify seam and SPEC.md "Security" for the key-scope model.
+import { tr } from '../i18n.ts';
 import type { KinwallDb } from '../db.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import { createRouter } from '../router.ts';
@@ -258,7 +259,7 @@ passkeysRoutes.openapi(
       // From a QR code's one-time token the new device has no key yet: nobody to credit.
       ...securityEventStmts(db, { kind: 'passkey.added', summary: `Passkey "${name}" added${usedToken ? ' from a QR code' : ''}`, by: usedToken ? null : await actorOf(c), device: name }),
     ]);
-    pushGrownUps(c, { title: `🔑 New passkey: ${name}`, body: "It can sign in to Kinwall as a parent. If that wasn't you, remove it in Settings → Access." });
+    pushGrownUps(c, (lang) => ({ title: tr(lang, '🔑 New passkey: {name}', { name }), body: tr(lang, "It can sign in to Kinwall as a parent. If that wasn't you, remove it in Settings → Access.") }));
     emit(c, 'settings.changed', {});
 
     // Always mint a session for the new passkey (not just for the token flow) - it lets any

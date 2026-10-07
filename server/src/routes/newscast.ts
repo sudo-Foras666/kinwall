@@ -15,6 +15,7 @@
 //
 // Rows read: one range read per source over the window (7 days, Earlier up to 30), through indexes
 // (test/query-plans.test.ts). The app asks only while the tab is showing and /api/rev moved.
+import { requestLang, tr, type Lang } from '../i18n.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import type { Context } from 'hono';
 import { createRouter } from '../router.ts';
@@ -82,11 +83,11 @@ const OFF = { error: 'Newscast is turned off in Settings → Features' };
 
 type PostRow = { id: string; member_id: string | null; text: string; emoji: string | null; photo_id: string | null; audience: 'everyone' | 'grownups'; status: 'live' | 'removed'; created_at: string };
 
-function postItem(r: PostRow, date: string): Item {
+function postItem(r: PostRow, date: string, lang: Lang = 'en'): Item {
   const removed = r.status === 'removed';
   return {
     key: `post:${r.id}`, kind: 'post', date, at: r.created_at, memberId: r.member_id, emoji: '📣',
-    title: removed ? 'Removed by a parent' : r.text, detail: null, count: 1, photos: !removed && r.photo_id ? [photoRef(r.photo_id)] : [],
+    title: removed ? tr(lang, 'Removed by a parent') : r.text, detail: null, count: 1, photos: !removed && r.photo_id ? [photoRef(r.photo_id)] : [],
     post: { id: r.id, text: removed ? null : r.text, emoji: removed ? null : r.emoji, audience: r.audience, removed }, reactions: [],
   };
 }
@@ -154,6 +155,7 @@ newscastRoutes.openapi(
     const members = new Map((memRes.results as Member[]).map((m) => [m.id, m]));
     const shown = (id: string | null) => !id || (members.has(id) && !hidden.has(id)); // null = the family
     const name = (id: string | null) => (id && members.get(id)?.name) || null;
+    const lang = requestLang(c); // the item titles (never what people wrote)
 
     const today = todayInTz(tz);
     const oldest = addDays(today, -(NEWSCAST_DAYS - 1));
@@ -188,7 +190,7 @@ newscastRoutes.openapi(
       const date = dayOf(r.created_at);
       if (!inWindow(date) || (r.audience === 'grownups' && !parent)) continue;
       if (r.status === 'removed' && !parent && (!me || me !== r.member_id)) continue;
-      items.push(postItem(r, date));
+      items.push(postItem(r, date, lang));
     }
 
     const chores = new Map<string, { memberId: string; date: string; titles: string[]; at: string }>();
@@ -202,13 +204,13 @@ newscastRoutes.openapi(
     }
     for (const [k, g] of chores) {
       const n = g.titles.length;
-      add({ key: k, kind: 'chores', date: g.date, at: g.at, memberId: g.memberId, emoji: '✅', title: `${name(g.memberId)} finished ${n === 1 ? g.titles[0] : `${n} chores`}`, detail: n > 1 ? g.titles.join(' · ') : null, count: n });
+      add({ key: k, kind: 'chores', date: g.date, at: g.at, memberId: g.memberId, emoji: '✅', title: n === 1 ? tr(lang, '{name} finished {chore}', { name: name(g.memberId) ?? '', chore: g.titles[0] }) : tr(lang, '{name} finished {n} chores', { name: name(g.memberId) ?? '', n }), detail: n > 1 ? g.titles.join(' · ') : null, count: n });
     }
 
     for (const r of (rows.rewards ?? []) as { id: string; member_id: string; title: string; emoji: string | null; given_at: string }[]) {
       const date = dayOf(r.given_at);
       if (!inWindow(date) || !shown(r.member_id)) continue;
-      add({ key: `reward:${r.id}`, kind: 'reward', date, at: r.given_at, memberId: r.member_id, emoji: '🎁', title: `${name(r.member_id)} got a reward: ${r.emoji ? `${r.emoji} ` : ''}${r.title}` });
+      add({ key: `reward:${r.id}`, kind: 'reward', date, at: r.given_at, memberId: r.member_id, emoji: '🎁', title: tr(lang, '{name} got a reward: {reward}', { name: name(r.member_id) ?? '', reward: `${r.emoji ? `${r.emoji} ` : ''}${r.title}` }) });
     }
 
     const pics = new Map<string, { kind: 'photos' | 'drawings'; memberId: string | null; date: string; ids: string[]; captions: (string | null)[]; at: string }>();
@@ -230,20 +232,21 @@ newscastRoutes.openapi(
       const n = g.ids.length;
       const who = name(g.memberId);
       const caption = g.captions.find(Boolean) ?? null;
+      const v = { name: who ?? '', n };
       const title = g.kind === 'drawings'
-        ? n === 1 ? `${who ? `${who} saved a drawing` : 'A new drawing'}${caption ? `: ${quote(caption)}` : ''}` : who ? `${who} saved ${n} drawings` : `${n} new drawings`
-        : n === 1 ? (who ? `${who} added a photo` : 'A new photo') : who ? `${who} added ${n} photos` : `${n} new photos`;
+        ? n === 1 ? `${who ? tr(lang, '{name} saved a drawing', v) : tr(lang, 'A new drawing')}${caption ? `: ${quote(caption)}` : ''}` : tr(lang, who ? '{name} saved {n} drawings' : '{n} new drawings', v)
+        : tr(lang, n === 1 ? (who ? '{name} added a photo' : 'A new photo') : who ? '{name} added {n} photos' : '{n} new photos', v);
       add({ key: k, kind: g.kind, date: g.date, at: g.at, memberId: g.memberId, emoji: g.kind === 'drawings' ? '🎨' : '📸', title, detail: g.kind === 'photos' || n > 1 ? quote(caption) : null, count: n, photos: g.ids.slice(-4).reverse().map(photoRef) });
     }
 
     for (const r of (rows.books ?? []) as { id: string; member_id: string | null; title: string | null; finished_on: string; rating: number | null; updated_at: string }[]) {
       if (!shown(r.member_id)) continue;
-      add({ key: `book:${r.id}`, kind: 'book', date: r.finished_on, at: dayOf(r.updated_at) === r.finished_on ? r.updated_at : null, memberId: r.member_id, emoji: '📚', title: `${name(r.member_id) ?? 'The family'} finished ${r.title ?? 'a book'}`, detail: r.rating ? '⭐'.repeat(r.rating) : null });
+      add({ key: `book:${r.id}`, kind: 'book', date: r.finished_on, at: dayOf(r.updated_at) === r.finished_on ? r.updated_at : null, memberId: r.member_id, emoji: '📚', title: tr(lang, '{name} finished {book}', { name: name(r.member_id) ?? tr(lang, 'The family'), book: r.title ?? tr(lang, 'a book') }), detail: r.rating ? '⭐'.repeat(r.rating) : null });
     }
 
     for (const r of (rows.memories ?? []) as { id: string; member_id: string | null; title: string | null; date: string; created_at: string; photo_id: string | null; photo_family: number | null }[]) {
       if (!shown(r.member_id)) continue;
-      add({ key: `memory:${r.id}`, kind: 'memory', date: r.date, at: dayOf(r.created_at) === r.date ? r.created_at : null, memberId: r.member_id, emoji: '📝', title: `${name(r.member_id) ?? 'The family'} added a memory`, detail: quote(r.title), photos: r.photo_id && r.photo_family === 1 ? [photoRef(r.photo_id)] : [] });
+      add({ key: `memory:${r.id}`, kind: 'memory', date: r.date, at: dayOf(r.created_at) === r.date ? r.created_at : null, memberId: r.member_id, emoji: '📝', title: tr(lang, '{name} added a memory', { name: name(r.member_id) ?? tr(lang, 'The family') }), detail: quote(r.title), photos: r.photo_id && r.photo_family === 1 ? [photoRef(r.photo_id)] : [] });
     }
 
     for (const m of members.values()) {
@@ -252,7 +255,7 @@ newscastRoutes.openapi(
       for (let d = from; d <= to; d = addDays(d, 1)) {
         if (d.slice(5) !== md) continue;
         const age = DATE.test(m.birthday!) ? Number(d.slice(0, 4)) - Number(m.birthday!.slice(0, 4)) : null;
-        add({ key: `birthday:${m.id}:${d}`, kind: 'birthday', date: d, at: null, memberId: m.id, emoji: '🎂', title: `Happy birthday, ${m.name}!`, detail: age && age > 0 ? `${m.name} turned ${age}` : null });
+        add({ key: `birthday:${m.id}:${d}`, kind: 'birthday', date: d, at: null, memberId: m.id, emoji: '🎂', title: tr(lang, 'Happy birthday, {name}!', { name: m.name }), detail: age && age > 0 ? tr(lang, '{name} turned {age}', { name: m.name, age }) : null });
       }
     }
 

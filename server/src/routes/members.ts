@@ -1,10 +1,11 @@
+import { loadLangs, tr, type Lang } from '../i18n.ts';
 import type { KinwallDb } from '../db.ts';
 import { createRoute, z } from '@hono/zod-openapi';
 import { createRouter } from '../router.ts';
 import type { Env } from '../env.ts';
 import { emit } from '../bus.ts';
 import { hostTimezone } from '../env.ts';
-import { AvatarSchema, ErrorSchema, MemberInputSchema, MemberSchema, TEMP_CHECK_OFF, TRANSITIONS_OFF } from '../schemas.ts';
+import { AvatarSchema, ErrorSchema, LanguageSchema, MemberInputSchema, MemberSchema, TEMP_CHECK_OFF, TRANSITIONS_OFF } from '../schemas.ts';
 import { parseMemberIds } from '../calendar-members.ts';
 import { balanceOf, pointTotalsStmt, type PointTotals } from '../stickers.ts';
 import { privacyOf } from '../journal-privacy.ts';
@@ -17,7 +18,7 @@ import { pictureUrl } from './photos.ts';
 
 export const membersRoutes = createRouter();
 
-type MemberRow = { id: string; name: string; color: string; avatar: string | null; birthday: string | null; sort: number; created_at: string; needs_approval?: number; grown_up?: number; transitions: string | null; reward_goal?: string | null; temp_check?: string | null; journal_private?: number | null; journal_private_allowed?: number | null; picture_id?: string | null };
+type MemberRow = { id: string; name: string; color: string; avatar: string | null; birthday: string | null; sort: number; created_at: string; needs_approval?: number; grown_up?: number; transitions: string | null; reward_goal?: string | null; temp_check?: string | null; journal_private?: number | null; journal_private_allowed?: number | null; picture_id?: string | null; language?: string | null };
 
 // The stored JSON, or off. Shared with notify.ts (which only acts on `on`).
 export function parseTransitions(raw: string | null): typeof TRANSITIONS_OFF {
@@ -139,8 +140,11 @@ const toGoals = (rows: { id: string; title: string; emoji: string | null; cost: 
   new Map(rows.map((r) => [r.id, { rewardId: r.id, title: r.title, emoji: r.emoji, cost: r.cost }]));
 const goalRewards = async (db: KinwallDb) => toGoals((await db.prepare(GOALS_SQL).all<{ id: string; title: string; emoji: string | null; cost: number }>()).results);
 
+/** The stored language, or null (follow the device) for anything this build doesn't know. */
+const languageOf = (raw: string | null | undefined) => LanguageSchema.safeParse(raw).data ?? null;
+
 function toApi(row: MemberRow, points: Points, goals: Map<string, Goal> = new Map(), todays: Map<string, string> = new Map()) {
-  return { id: row.id, name: row.name, color: row.color, avatar: row.avatar, picture: row.picture_id ? pictureUrl(row.picture_id) : null, birthday: row.birthday ?? null, sort: row.sort, grownUp: !!row.grown_up, needsApproval: !!row.needs_approval, ...points, transitionReminders: parseTransitions(row.transitions), rewardGoal: (row.reward_goal && goals.get(row.reward_goal)) || null, tempCheck: parseTempCheck(row.temp_check), todayGoal: todays.get(row.id) ?? null, privateJournal: privacyOf({ grown_up: row.grown_up ?? 0, journal_private: row.journal_private ?? null, journal_private_allowed: row.journal_private_allowed ?? 0 }) };
+  return { id: row.id, name: row.name, color: row.color, avatar: row.avatar, picture: row.picture_id ? pictureUrl(row.picture_id) : null, birthday: row.birthday ?? null, sort: row.sort, grownUp: !!row.grown_up, needsApproval: !!row.needs_approval, ...points, transitionReminders: parseTransitions(row.transitions), rewardGoal: (row.reward_goal && goals.get(row.reward_goal)) || null, tempCheck: parseTempCheck(row.temp_check), todayGoal: todays.get(row.id) ?? null, privateJournal: privacyOf({ grown_up: row.grown_up ?? 0, journal_private: row.journal_private ?? null, journal_private_allowed: row.journal_private_allowed ?? 0 }), language: languageOf(row.language) };
 }
 
 membersRoutes.openapi(
@@ -198,9 +202,10 @@ membersRoutes.openapi(
       needs_approval: body.needsApproval && !body.grownUp ? 1 : 0,
       transitions: body.transitionReminders ? JSON.stringify(body.transitionReminders) : null,
       temp_check: body.tempCheck ? JSON.stringify(body.tempCheck) : null,
+      language: body.language ?? null,
     };
-    await c.env.DB.prepare('INSERT INTO members (id, name, color, avatar, birthday, sort, created_at, grown_up, needs_approval, transitions, temp_check) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-      .bind(row.id, row.name, row.color, row.avatar, row.birthday, row.sort, row.created_at, row.grown_up, row.needs_approval, row.transitions, row.temp_check)
+    await c.env.DB.prepare('INSERT INTO members (id, name, color, avatar, birthday, sort, created_at, grown_up, needs_approval, transitions, temp_check, language) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(row.id, row.name, row.color, row.avatar, row.birthday, row.sort, row.created_at, row.grown_up, row.needs_approval, row.transitions, row.temp_check, row.language)
       .run();
     emit(c, 'member.changed', { id: row.id });
     return c.json(toApi(row, NO_POINTS), 201);
@@ -241,13 +246,14 @@ export async function grownUpChangeStmts(c: Context<{ Bindings: Env }>, id: stri
 }
 /** After that batch: tell them, and parent devices. */
 export async function noteGrownUpChange(c: Context<{ Bindings: Env }>, id: string, name: string, grownUp: boolean): Promise<void> {
-  const note = {
-    title: grownUpTitle(name, grownUp),
-    body: grownUp
-      ? `Changed on a parent's device. ${name}'s private journal entries open only on ${name}'s own phone or computer.`
-      : `What ${name} wrote in private as a grown-up stays private. It opens again only on ${name}'s own phone or computer, once ${name} is a grown-up again. New entries aren't private unless a parent allows it.`,
-  };
-  await recordNotification(c.env.DB, { kind: 'privacy', ...note, url: `/#/journal/${id}`, memberIds: [id], source: 'system' });
+  // In the reader's language (i18n.ts): theirs for their feed row, each parent device's for the push.
+  const note = (lang: Lang) => ({
+    title: tr(lang, grownUp ? '{name} is now marked as a grown-up' : '{name} is no longer marked as a grown-up', { name }),
+    body: tr(lang, grownUp
+      ? "Changed on a parent's device. {name}'s private journal entries open only on {name}'s own phone or computer."
+      : "What {name} wrote in private as a grown-up stays private. It opens again only on {name}'s own phone or computer, once {name} is a grown-up again. New entries aren't private unless a parent allows it.", { name }),
+  });
+  await recordNotification(c.env.DB, { kind: 'privacy', ...note((await loadLangs(c.env.DB)).member(id)), url: `/#/journal/${id}`, memberIds: [id], source: 'system' });
   pushGrownUps(c, note);
 }
 
@@ -288,12 +294,13 @@ membersRoutes.openapi(
       needs_approval: body.needsApproval !== undefined ? (body.needsApproval ? 1 : 0) : existing.needs_approval,
       transitions: body.transitionReminders ? JSON.stringify(body.transitionReminders) : existing.transitions,
       temp_check: body.tempCheck ? JSON.stringify(body.tempCheck) : existing.temp_check,
+      language: body.language !== undefined ? body.language : existing.language,
     };
     if (updated.grown_up) updated.needs_approval = 0; // a grown-up's chores never wait for an OK
     const trail = flipped ? await grownUpChangeStmts(c, id, !!updated.grown_up, updated.name) : [];
     await c.env.DB.batch([
-      c.env.DB.prepare('UPDATE members SET name = ?, color = ?, avatar = ?, birthday = ?, sort = ?, grown_up = ?, needs_approval = ?, transitions = ?, temp_check = ? WHERE id = ?')
-        .bind(updated.name, updated.color, updated.avatar, updated.birthday, updated.sort, updated.grown_up ?? 0, updated.needs_approval ?? 0, updated.transitions, updated.temp_check ?? null, id),
+      c.env.DB.prepare('UPDATE members SET name = ?, color = ?, avatar = ?, birthday = ?, sort = ?, grown_up = ?, needs_approval = ?, transitions = ?, temp_check = ?, language = ? WHERE id = ?')
+        .bind(updated.name, updated.color, updated.avatar, updated.birthday, updated.sort, updated.grown_up ?? 0, updated.needs_approval ?? 0, updated.transitions, updated.temp_check ?? null, updated.language ?? null, id),
       ...trail,
     ]);
     if (flipped) {
@@ -333,6 +340,36 @@ membersRoutes.openapi(
     if (res.meta.changes === 0) return c.json({ error: 'not found' }, 404);
     emit(c, 'member.changed', { id });
     return c.json({ avatar }, 200);
+  },
+);
+
+// Like the avatar: someone picks their own language on their own device (a kid's too); parents
+// pick anyone's. Wall screens and the app's widget keys can't.
+membersRoutes.openapi(
+  createRoute({
+    method: 'put',
+    path: '/api/members/{id}/language',
+    tags: ['Members'],
+    summary: "Set a member's display language ('en', 'de', or null to follow each device). Parents for anyone; a member's own device (not its widgets) only for them.",
+    security: [{ Bearer: [] }],
+    request: { params: z.object({ id: z.string() }), body: { content: { 'application/json': { schema: z.object({ language: LanguageSchema.nullable() }) } } } },
+    responses: {
+      200: { description: 'ok', content: { 'application/json': { schema: z.object({ language: LanguageSchema.nullable() }) } } },
+      403: { description: "not this member's own device", content: { 'application/json': { schema: ErrorSchema } } },
+      404: { description: 'not found', content: { 'application/json': { schema: ErrorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { language } = c.req.valid('json');
+    const key = await requestKey(c);
+    if (key?.scope === 'display' && (key.deviceKind === 'widgets' || (await deviceOwner(c)) !== id)) {
+      return c.json({ error: "Only a parent's device or their own device can change this language." }, 403);
+    }
+    const res = await c.env.DB.prepare('UPDATE members SET language = ? WHERE id = ?').bind(language, id).run();
+    if (res.meta.changes === 0) return c.json({ error: 'not found' }, 404);
+    emit(c, 'member.changed', { id });
+    return c.json({ language }, 200);
   },
 );
 

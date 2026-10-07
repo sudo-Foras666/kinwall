@@ -6,6 +6,7 @@ import MealSheet from './MealSheet.tsx'
 import RecipeSheet from './RecipeSheet.tsx'
 import type { Meal, Recipe } from './meal-types.ts'
 import type { Me } from './types.ts'
+import { t } from './i18n.ts'
 
 /** A tapped planned meal: its recipe read-only with "Edit meal" (admins) or "Meal details" (an
  * assignee's notes and status), or the meal's own sheet for dining out and simple meals. */
@@ -21,7 +22,7 @@ export function PlannedMealSheet({ meal, recipes, me, onClose, onSaved, onRated 
     {details || !recipe
       ? <MealSheet meal={meal} initial={{ date: meal.date, slot: meal.slot }} recipes={recipes} admin={admin} owner={me?.owner} onClose={onClose} onSaved={onSaved} onRecipe={setViewing} />
       : <RecipeSheet key={recipe.id} recipe={recipe} library={recipes} admin={false} owner={me?.owner} onRated={onRated} onClose={onClose} onSaved={onSaved}
-        onEditMeal={{ label: admin ? 'Edit meal' : 'Meal details', open: () => setDetails(true) }} />}
+        onEditMeal={{ label: admin ? t('Edit meal') : t('Meal details'), open: () => setDetails(true) }} />}
     {viewing && <RecipeSheet key={viewing.id} recipe={viewing} library={recipes} admin={false} owner={me?.owner} onRated={onRated} onClose={() => setViewing(null)} onSaved={onSaved} />}
   </>
 }

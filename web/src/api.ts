@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { lang, t, type Lang } from './i18n.ts'
 import { remoteNightKey, type DeviceKind, type RemoteNight } from './wallScreen.ts'
 import { tellAppSignedIn, tellAppSignedOut } from './native.ts'
 import { changedAreas, type RevAnswer } from './revs.ts'
@@ -98,7 +99,7 @@ function refreshMediaToken() {
   if (wait > 0) { mediaRetry ??= setTimeout(() => { mediaRetry = undefined; refreshMediaToken() }, wait); return }
   mediaAsking = true
   mediaAskedAt = Date.now()
-  fetch(apiUrl('api/media-token'), { headers: { Authorization: `Bearer ${key}` } })
+  fetch(apiUrl('api/media-token'), { headers: { ...langHeader(), Authorization: `Bearer ${key}` } })
     .then(r => (r.ok ? r.json() as Promise<{ token: string | null }> : null))
     .then(r => {
       if (!r || getKey() !== key) return
@@ -119,6 +120,9 @@ function mediaUrl(path: string, more = ''): string {
   if (mediaTokenStale(saved, key, mediaChecked)) refreshMediaToken()
   return saved?.token ? apiUrl(`${path}?key=${encodeURIComponent(saved.token)}${more}`) : ''
 }
+
+/** Every request says which language to answer in, so the server's messages match the app's. */
+const langHeader = () => ({ 'Accept-Language': lang() })
 
 export class ApiError extends Error {
   status: number
@@ -262,6 +266,7 @@ async function send<T>(path: string, opts: RequestInit & { useAdmin?: boolean })
     res = await fetch(apiUrl(path), {
       ...init,
       headers: {
+        ...langHeader(),
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
         ...(key ? { Authorization: `Bearer ${key}` } : {}),
         ...init.headers,
@@ -270,7 +275,7 @@ async function send<T>(path: string, opts: RequestInit & { useAdmin?: boolean })
   } catch {
     // No response at all: no network (or the server is unreachable). Status 0 tells callers apart.
     setOffline(true)
-    throw new ApiError(0, OFFLINE_MESSAGE)
+    throw new ApiError(0, t(OFFLINE_MESSAGE))
   }
   setOffline(false)
   if (!res.ok) {
@@ -348,7 +353,7 @@ export const api = {
    * KeyLinkGate): its name; null when this server refuses the key (a setup code, or a key that
    * no longer works). Throws when the server can't be reached. Any key may read settings. */
   familyNameFor: async (key: string): Promise<string | null> => {
-    const res = await fetch(apiUrl('api/settings'), { headers: { Authorization: `Bearer ${key}` } })
+    const res = await fetch(apiUrl('api/settings'), { headers: { ...langHeader(), Authorization: `Bearer ${key}` } })
     if (res.status === 401 || res.status === 403) return null
     if (!res.ok) throw new ApiError(res.status, failureMessage(res.status, ''))
     return ((await res.json()) as Settings).familyName?.trim() ?? ''
@@ -374,6 +379,8 @@ export const api = {
   updateMember: (id: string, body: Partial<Member>, useAdmin?: boolean) => MOCK ? mock.updateMember(id, body) : patch<Member>(`api/members/${id}`, body, useAdmin),
   deleteMember: (id: string, useAdmin?: boolean) => MOCK ? mock.deleteMember(id) : del(`api/members/${id}`, useAdmin),
   /** A kid's own device sets its own avatar; parents use updateMember. */
+  /** Someone's own device sets their own language (null: each device decides); parents may set anyone's. */
+  setMemberLanguage: (id: string, language: Lang | null) => MOCK ? mock.updateMember(id, { language }).then(() => ({ language })) : put<{ language: Lang | null }>(`api/members/${id}/language`, { language }),
   setMemberAvatar: (id: string, avatar: string) => MOCK ? mock.updateMember(id, { avatar }).then(() => ({ avatar })) : put<{ avatar: string | null }>(`api/members/${id}/avatar`, { avatar }),
   /** A profile picture (a square crop, picture.ts): parents for anyone, a kid's own device for them.
    * from: the family photo it was cropped from (a reference; the original isn't uploaded again). */
@@ -438,7 +445,7 @@ export const api = {
     MOCK ? mock.createCaldavAccount(body) : post<Account>('api/accounts/caldav', body, true),
   getRemoteCalendars: (accountId: string) => MOCK ? mock.getRemoteCalendars(accountId) : get<RemoteCalendar[]>(`api/accounts/${accountId}/remote-calendars`, true),
   // The provider's consent URL; the response also sets this browser's cookie for the callback (routes/oauth.ts), so open the URL here.
-  oauthStart: (kind: 'google' | 'microsoft') => MOCK ? Promise.reject(new Error("The demo doesn't connect to Google or Microsoft.")) : post<{ url: string }>(`api/oauth/${kind}/start`, undefined, true),
+  oauthStart: (kind: 'google' | 'microsoft') => MOCK ? Promise.reject(new Error(t("The demo doesn't connect to Google or Microsoft."))) : post<{ url: string }>(`api/oauth/${kind}/start`, undefined, true),
 
   // includeHidden (parents' devices): also the events the family doesn't see, each with `hidden` saying why.
   getEvents: (from: string, to: string, memberId?: string, calendarId?: string, includeHidden?: boolean) => {
@@ -601,8 +608,8 @@ export const api = {
     if (MOCK) return mock.nextGooglePhoto(w, h)
     let res: Response
     try {
-      res = await fetch(apiUrl(`api/google-photos/next?w=${w}&h=${h}`), { headers: { Authorization: `Bearer ${getKey() ?? ''}` } })
-    } catch { throw new ApiError(0, OFFLINE_MESSAGE) }
+      res = await fetch(apiUrl(`api/google-photos/next?w=${w}&h=${h}`), { headers: { ...langHeader(), Authorization: `Bearer ${getKey() ?? ''}` } })
+    } catch { throw new ApiError(0, t(OFFLINE_MESSAGE)) }
     if (!res.ok) throw new ApiError(res.status, failureMessage(res.status, res.statusText))
     return { src: URL.createObjectURL(await res.blob()), revoke: true }
   },
@@ -750,14 +757,14 @@ export const api = {
   // Raw JSON file (not parsed): the caller hands the Blob straight to a download link.
   exportData: async (): Promise<Blob> => {
     const key = getAdminKey() ?? getKey()
-    const res = await fetch(apiUrl('api/export'), { headers: key ? { Authorization: `Bearer ${key}` } : {} })
-    if (!res.ok) throw new ApiError(res.status, failureMessage(res.status, res.statusText || 'Export failed'))
+    const res = await fetch(apiUrl('api/export'), { headers: { ...langHeader(), ...(key ? { Authorization: `Bearer ${key}` } : {}) } })
+    if (!res.ok) throw new ApiError(res.status, failureMessage(res.status, res.statusText || t('Export failed')))
     return res.blob()
   },
   // A recipe card PDF the server fetched from that recipe's or meal's own sourceUrl.
   recipeCardPdf: async (path: string): Promise<ArrayBuffer> => {
     const key = getKey()
-    const res = await fetch(apiUrl(path), { headers: key ? { Authorization: `Bearer ${key}` } : {} })
+    const res = await fetch(apiUrl(path), { headers: { ...langHeader(), ...(key ? { Authorization: `Bearer ${key}` } : {}) } })
     if (!res.ok) {
       let msg = res.statusText
       try { msg = (await res.json()).error ?? msg } catch { /* not JSON */ }

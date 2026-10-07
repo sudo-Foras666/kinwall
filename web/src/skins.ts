@@ -5,6 +5,7 @@
 // combination - see assertSkinsAA() below, and useTheme.ts's applyAppearance for where these land
 // on <html> as CSS custom properties.
 import { accentFill, contrastRatio, readableOn } from './color.ts'
+import { t } from './i18n.ts'
 
 export type SkinBase = {
   bg: string; bgAlt: string; card: string
@@ -89,6 +90,8 @@ export const OLD_BACKGROUNDS: Record<string, { name: string; bg: string; card: s
   midnight: { name: 'Midnight', bg: '#0F1420', card: '#1B2333', text: '#E7ECF7' },
 }
 export const getSkin = (id?: string): Skin => SKINS.find(s => s.id === id) ?? SKINS.find(s => s.id === DEFAULT_SKIN_ID)!
+/** A skin's name to show: a built-in one's in the current language, a family scheme's as they typed it. */
+export const skinName = (s: Pick<Skin, 'id' | 'name'>) => s.id.startsWith('custom-') ? s.name : t(s.name)
 
 // ---- The family's own schemes (Settings -> Appearance -> Customize) ----
 // People pick four colors per mode; the softer background, border and dim text are derived from
@@ -130,10 +133,10 @@ export const paletteOf = (skin: Skin, dark: boolean): Palette => {
 export function paletteChecks(p: Palette, dark: boolean): { label: string; ratio: number }[] {
   const b = baseFromPalette(p, dark)
   return [
-    { label: 'Text on background', ratio: contrastRatio(b.text, b.bg) },
-    { label: 'Text on cards', ratio: contrastRatio(b.text, b.card) },
-    { label: 'Dim text on background', ratio: contrastRatio(b.textDim, b.bg) },
-    { label: 'Dim text on cards', ratio: contrastRatio(b.textDim, b.card) },
+    { label: t('Text on background'), ratio: contrastRatio(b.text, b.bg) },
+    { label: t('Text on cards'), ratio: contrastRatio(b.text, b.card) },
+    { label: t('Dim text on background'), ratio: contrastRatio(b.textDim, b.bg) },
+    { label: t('Dim text on cards'), ratio: contrastRatio(b.textDim, b.card) },
   ]
 }
 
@@ -181,7 +184,7 @@ export const SCHEME_BLURBS: Record<string, string> = {
 }
 
 /** Seasonal's line in the sheet, naming the skin it uses on `d`. */
-export const seasonalNote = (d = new Date()) => `Changes with the season. Now: ${getSkin(seasonalSkinId(d)).name}`
+export const seasonalNote = (d = new Date()) => t('Changes with the season. Now: {name}', { name: skinName(getSkin(seasonalSkinId(d))) })
 
 /** Re-exported WCAG contrast ratio, used by the Settings custom-color badges too. */
 export const contrast = contrastRatio
@@ -201,13 +204,13 @@ export function tokensFor(skin: Skin, dark: boolean): SkinTokens {
 export function assertSkinsAA() {
   for (const skin of SKINS) {
     for (const dark of [false, true]) {
-      const t = tokensFor(skin, dark)
+      const tk = tokensFor(skin, dark)
       const checks: [string, number][] = [
-        ['text/bg', contrastRatio(t.text, t.bg)],
-        ['text/card', contrastRatio(t.text, t.card)],
-        ['textDim/bg', contrastRatio(t.textDim, t.bg)],
-        ['textDim/card', contrastRatio(t.textDim, t.card)],
-        ['accentInk/accentStrong', contrastRatio(t.accentInk, t.accentStrong)],
+        ['text/bg', contrastRatio(tk.text, tk.bg)],
+        ['text/card', contrastRatio(tk.text, tk.card)],
+        ['textDim/bg', contrastRatio(tk.textDim, tk.bg)],
+        ['textDim/card', contrastRatio(tk.textDim, tk.card)],
+        ['accentInk/accentStrong', contrastRatio(tk.accentInk, tk.accentStrong)],
       ]
       for (const [label, ratio] of checks) {
         if (ratio < 4.5) console.warn(`[skins] ${skin.id} ${dark ? 'dark' : 'light'} ${label} = ${ratio.toFixed(2)} - fails WCAG AA`)

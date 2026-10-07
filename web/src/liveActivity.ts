@@ -7,6 +7,7 @@ import { ANY_STORE, anyStoreView, tripView } from './trip.ts'
 import { warningTimes, type TransitionReminders } from './transitions.ts'
 import { cardLabel } from './medications.ts'
 import type { AisleOrder, DueDose, EventInstance, ListItem } from './types.ts'
+import { t } from './i18n.ts'
 
 const MIN = 60000
 
@@ -25,12 +26,12 @@ export const timerName = (label: string) => label.split(' · ')[0]
  * rang ("Done: Rice") until it's dismissed. Null when there are none. */
 export function timerActivity(timers: ActivityTimer[]): TimerActivity | null {
   // A paused timer isn't counting down, so it's not on the Lock Screen and doesn't ring.
-  const running = timers.filter(t => !t.done && !t.paused).sort((a, b) => a.endsAt - b.endsAt)
-  const shown = running[0] ?? timers.filter(t => t.done).sort((a, b) => b.endsAt - a.endsAt)[0]
+  const running = timers.filter(x => !x.done && !x.paused).sort((a, b) => a.endsAt - b.endsAt)
+  const shown = running[0] ?? timers.filter(x => x.done).sort((a, b) => b.endsAt - a.endsAt)[0]
   if (!shown) return null
-  const title = (t: ActivityTimer) => t.title ?? 'Timer'
-  const alarms = running.map(t => ({ at: t.endsAt, title: `Time's up: ${timerName(t.label)}`, body: [title(t), t.detail].filter(Boolean).join(' · ') }))
-  return { recipe: title(shown), timer: timerName(shown.label), step: shown.detail ?? '', endsAt: shown.endsAt, done: shown.done, more: running.filter(t => t !== shown).length, alarms }
+  const title = (x: ActivityTimer) => x.title ?? t('Timer')
+  const alarms = running.map(x => ({ at: x.endsAt, title: t("Time's up: {name}", { name: timerName(x.label) }), body: [title(x), x.detail].filter(Boolean).join(' · ') }))
+  return { recipe: title(shown), timer: timerName(shown.label), step: shown.detail ?? '', endsAt: shown.endsAt, done: shown.done, more: running.filter(x => x !== shown).length, alarms }
 }
 
 // ---- A shopping trip (Lists, shopping mode) ----
@@ -47,7 +48,7 @@ export function shoppingActivity(listId: string, store: string, items: TripItem[
   const view = store === ANY_STORE ? anyStoreView(items, order) : tripView(items, store, order, storeAisles, reverse)
   const walk = [...view.aisles.flatMap(g => g.items.map(i => ({ i, aisle: store === ANY_STORE ? i.aisle ?? null : g.aisle }))), ...view.unknown.map(i => ({ i, aisle: null }))].filter(x => !x.i.done)
   const upcoming = walk.slice(0, 5).map(({ i, aisle }) => ({ id: i.id, title: i.title, aisle, ...(i.listId && i.listId !== listId ? { listId: i.listId } : {}) }))
-  return { listId, store: store === ANY_STORE ? 'Any store' : store, left: walk.length, next: upcoming[0] ?? null, upcoming }
+  return { listId, store: store === ANY_STORE ? t('Any store') : store, left: walk.length, next: upcoming[0] ?? null, upcoming }
 }
 
 // ---- The next leave-by or start-prep time (transition reminders) ----
@@ -117,8 +118,8 @@ export function medicationActivity(doses: DueDose[], me: { id: string; name: str
   const who = me.name.split(' ')[0]
   return {
     medicationId: d.medicationId, date: d.date, time: d.time, memberName: who,
-    label: names && d.name ? cardLabel(d) : `${who}'s medicine`,
-    headline: late ? `Still time for ${who}'s medicine` : `Time for ${who}'s medicine`,
+    label: names && d.name ? cardLabel(d) : t("{name}'s medicine", { name: who }),
+    headline: late ? t("Still time for {name}'s medicine", { name: who }) : t("Time for {name}'s medicine", { name: who }),
     dueAt: d.dueAt, windowEndsAt: d.until, stage: late ? 'late' : 'due',
   }
 }

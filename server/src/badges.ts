@@ -1,6 +1,7 @@
 // Milestone badges on a member's profile (GET /api/members/{id}/stats): a fixed set, each earned
 // from all-time totals Kinwall already keeps, so a badge once earned stays earned (deleting a chore
-// that was done keeps its history; see routes/chores.ts).
+// that was done keeps its history; see routes/chores.ts). Titles in the asker's language (i18n.ts).
+import { tr, type Lang } from './i18n.ts';
 
 export type BadgeTotals = {
   chores: number; // approved chore completions, all time
@@ -29,6 +30,6 @@ export const BADGES: Badge[] = [
   { id: 'books-10', emoji: '📚', title: '10 books', earned: (t) => t.books >= 10 },
 ];
 
-export function earnedBadges(totals: BadgeTotals) {
-  return BADGES.map((b) => ({ id: b.id, emoji: b.emoji, title: b.title, earned: b.earned(totals) }));
+export function earnedBadges(totals: BadgeTotals, lang: Lang = 'en') {
+  return BADGES.map((b) => ({ id: b.id, emoji: b.emoji, title: tr(lang, b.title), earned: b.earned(totals) }));
 }

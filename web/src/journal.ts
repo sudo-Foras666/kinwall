@@ -1,5 +1,6 @@
 // Goal follow-up and the journal (GoalFollowUp.tsx, Journal.tsx, Settings → Family). Pure, so
 // web/test/journal.test.ts covers it.
+import { t } from './i18n.ts'
 import type { FollowupOutcome, JournalDay, JournalPrivacy, Member } from './types.ts'
 
 /** The evening check's times, "HH:MM": noon to 11:30 PM in half hours (midnight ends the day).
@@ -17,9 +18,9 @@ export const MOODS = ['😄', '🙂', '😐', '😕', '😢', '😡', '😴', '�
 export const JOURNAL_TEXT_MAX = 2000
 
 export function followupThanks(outcome: FollowupOutcome, name: string): string {
-  if (outcome === 'yes') return `Nice work, ${name} ✓`
-  if (outcome === 'partly') return `Good going, ${name}: a bit counts ✓`
-  return `That's OK, ${name}. Tomorrow's a new day ✓`
+  if (outcome === 'yes') return t('Nice work, {name} ✓', { name })
+  if (outcome === 'partly') return t('Good going, {name}: a bit counts ✓', { name })
+  return t("That's OK, {name}. Tomorrow's a new day ✓", { name })
 }
 
 /** Goals met (yes) out of goals set (not skipped) in the 7 days ending `today`. */
@@ -33,8 +34,8 @@ export function goalsThisWeek(days: JournalDay[], today: string): { met: number;
 export function privacyLine(member: Member, p: JournalPrivacy | undefined): string {
   if (!p) return '🔒'
   // Other parent devices still see each private entry's mood (docs/using/journal.md#private-journals).
-  if (p.on && p.mine) return `🔒 Private: only you can read these. ${member.grownUp ? 'Other parent devices' : 'Parents'} see your mood, not what you write.`
-  if (p.on) return `🔒 Private: only ${member.name} can read these. You see ${member.name}'s mood, not what they write.`
-  if (p.mine) return member.grownUp ? 'Shared: parent devices can read your journal.' : 'Just for you, and parents can see it too.'
-  return member.grownUp ? `${member.name}'s own devices and parent devices can read this.` : `Just for ${member.name}, and parents can see it too.`
+  if (p.on && p.mine) return t(member.grownUp ? '🔒 Private: only you can read these. Other parent devices see your mood, not what you write.' : '🔒 Private: only you can read these. Parents see your mood, not what you write.')
+  if (p.on) return t("🔒 Private: only {name} can read these. You see {name}'s mood, not what they write.", { name: member.name })
+  if (p.mine) return t(member.grownUp ? 'Shared: parent devices can read your journal.' : 'Just for you, and parents can see it too.')
+  return t(member.grownUp ? "{name}'s own devices and parent devices can read this." : 'Just for {name}, and parents can see it too.', { name: member.name })
 }

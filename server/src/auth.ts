@@ -223,6 +223,7 @@ const DISPLAY_ALLOWED: { method: string; pattern: RegExp }[] = [
   { method: 'GET', pattern: /^\/api\/members\/[^/]+\/stats$/ }, // profiles: the whole family sees the fun stats
   { method: 'PUT', pattern: /^\/api\/members\/[^/]+\/avatar$/ }, // a kid's own device, its own avatar only (routes/members.ts)
   { method: 'PUT', pattern: /^\/api\/members\/[^/]+\/picture$/ }, // and its own profile picture (routes/photos.ts)
+  { method: 'PUT', pattern: /^\/api\/members\/[^/]+\/language$/ }, // and its own display language (routes/members.ts)
   { method: 'DELETE', pattern: /^\/api\/members\/[^/]+\/picture$/ },
   { method: 'POST', pattern: /^\/api\/members\/[^/]+\/check-in$/ },
   // Temp check: answered on the wall like a chore; routes/temp-check.ts keeps the answers off shared screens.

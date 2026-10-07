@@ -9,7 +9,9 @@ import { homeAlias } from './hashQuery.ts'
 import { retryBoot } from './appUpdate.ts'
 import { applyScreenScale } from './screenScale.ts'
 import { watchKeyboard } from './keyboard.ts'
+import { setLang, startLang, t } from './i18n.ts'
 markNativeApp()
+setLang(startLang()) // App switches to the owner's own once members load (i18n.ts)
 window.addEventListener(IMPORT_CONTACTS_EVENT, e => { receiveSharedContacts((e as CustomEvent).detail) })
 
 // Android / Chrome / Edge offer to install once the page qualifies, often before the App chunk
@@ -109,7 +111,7 @@ if ('serviceWorker' in navigator) {
 const canRetry = () => { try { return retryBoot(sessionStorage) } catch { return false } }
 const BootFailed = () => (
   <div className="gate-screen" role="main">
-    <div className="state-card">Kinwall didn't load. <button type="button" className="btn" onClick={() => location.reload()}>Reload</button></div>
+    <div className="state-card">{t("Kinwall didn't load.")} <button type="button" className="btn" onClick={() => location.reload()}>{t('Reload')}</button></div>
   </div>
 )
 class BootBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {

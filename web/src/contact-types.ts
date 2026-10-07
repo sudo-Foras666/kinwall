@@ -1,3 +1,5 @@
+import { intlLocale, t } from './i18n.ts'
+
 /** Household directory records. Private records are for admin devices only; the API must enforce
  * that boundary too, since hiding a card in the browser cannot protect its data. */
 export interface ContactMethod { label: string; value: string }
@@ -70,8 +72,8 @@ export const activeContactFilters = (f: ContactFilters) => [f.show !== 'all', f.
 /** One line under the search, e.g. "Favorites · Medical · Name A–Z"; empty while nothing differs from the defaults. */
 export function contactFilterSummary(f: ContactFilters, categoryName: (id: string) => string | undefined): string {
   if (!activeContactFilters(f) && f.sort === DEFAULT_CONTACT_FILTERS.sort) return ''
-  return [f.show !== 'all' && CONTACT_SHOW_LABELS[f.show], f.kind !== 'all' && CONTACT_KIND_LABELS[f.kind],
-    f.category !== 'all' && (categoryName(f.category) ?? 'Category'), CONTACT_SORT_LABELS[f.sort]].filter(Boolean).join(' · ')
+  return [f.show !== 'all' && t(CONTACT_SHOW_LABELS[f.show]), f.kind !== 'all' && t(CONTACT_KIND_LABELS[f.kind]),
+    f.category !== 'all' && (categoryName(f.category) ?? t('Category')), t(CONTACT_SORT_LABELS[f.sort])].filter(Boolean).join(' · ')
 }
 
 /** A detail's label as people read it: "birthday" → "Birthday", and labels saved before imports
@@ -89,5 +91,5 @@ export function contactDate(date: string): string {
   const m = /^(\d{4}|-)-(\d{2})-(\d{2})$/.exec(date)
   if (!m) return date
   const d = new Date(Date.UTC(m[1] === '-' ? 2000 : Number(m[1]), Number(m[2]) - 1, Number(m[3])))
-  return d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long', day: 'numeric', ...(m[1] === '-' ? {} : { year: 'numeric' }) })
+  return d.toLocaleDateString(intlLocale(), { timeZone: 'UTC', month: 'long', day: 'numeric', ...(m[1] === '-' ? {} : { year: 'numeric' }) })
 }

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { api } from './api.ts'
 import { useApp } from './AppContext.tsx'
 import { useDeviceAppearance } from './useTheme.ts'
+import { t } from './i18n.ts'
 import { GET_STARTED_KEY, getStartedItems, getStartedSnoozed, type GetStartedCounts, type GetStartedItem } from './getStarted.ts'
 
 const ROWS: Record<GetStartedItem, { emoji: string; title: string; why: string; href: string }> = {
@@ -46,10 +47,10 @@ export default function GetStarted() {
   return (
     <section className="get-started" aria-labelledby="get-started-title">
       <div className="get-started-head">
-        <h2 id="get-started-title">Finish setting up Kinwall</h2>
-        <span className="get-started-count">{items.length} left</span>
+        <h2 id="get-started-title">{t('Finish setting up Kinwall')}</h2>
+        <span className="get-started-count">{t('{n} left', { n: items.length })}</span>
       </div>
-      <p className="get-started-sub">A few things make the wall useful from day one.</p>
+      <p className="get-started-sub">{t('A few things make the wall useful from day one.')}</p>
       <ul className="get-started-list">
         {items.map(id => {
           const r = ROWS[id]
@@ -57,14 +58,14 @@ export default function GetStarted() {
             <li key={id}>
               <a className="get-started-item" href={r.href}>
                 <span className="get-started-emoji" aria-hidden="true">{r.emoji}</span>
-                <span className="get-started-text"><span className="get-started-title">{r.title}</span><span className="get-started-why">{r.why}</span></span>
+                <span className="get-started-text"><span className="get-started-title">{t(r.title)}</span><span className="get-started-why">{t(r.why)}</span></span>
                 <span className="get-started-go" aria-hidden="true">›</span>
               </a>
             </li>
           )
         })}
       </ul>
-      <div className="get-started-foot"><button className="link-btn" onClick={notNow}>Not now</button></div>
+      <div className="get-started-foot"><button className="link-btn" onClick={notNow}>{t('Not now')}</button></div>
     </section>
   )
 }

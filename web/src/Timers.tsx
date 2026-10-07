@@ -10,6 +10,7 @@ import {
   clock, dismissRung, durationLabel, getTimers, isRunning, pauseTimer, remaining, resetTimer, resumeTimer, ringDue,
   startTimer, stopTimer, subscribeTimers, type NewTimer, type Timer,
 } from './timers.ts'
+import { t } from './i18n.ts'
 
 export const useTimers = () => useSyncExternalStore(subscribeTimers, getTimers)
 
@@ -37,23 +38,23 @@ function beep() {
   if (!audio) return
   void audio.resume()
   for (let i = 0; i < 3; i++) {
-    const t = audio.currentTime + i * 0.35, osc = audio.createOscillator(), gain = audio.createGain()
+    const at = audio.currentTime + i * 0.35, osc = audio.createOscillator(), gain = audio.createGain()
     osc.frequency.value = 880
-    gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.25)
-    osc.connect(gain).connect(audio.destination); osc.start(t); osc.stop(t + 0.3)
+    gain.gain.setValueAtTime(0.0001, at); gain.gain.exponentialRampToValueAtTime(0.3, at + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.25)
+    osc.connect(gain).connect(audio.destination); osc.start(at); osc.stop(at + 0.3)
   }
   clearTimeout(quiet)
   quiet = setTimeout(() => { quiet = undefined; void audio?.suspend() }, 1500)
 }
 
 /** Starts a timer from a tap (so it can beep) and says so. */
-export function start(t: NewTimer) {
+export function start(timer: NewTimer) {
   unlockSound()
-  startTimer(t)
-  announce(`${t.label} timer started`)
+  startTimer(timer)
+  announce(t('{name} timer started', { name: timer.label }))
 }
 
-const about = (t: Timer) => [t.title, t.detail].filter(Boolean).join(' · ')
+const about = (x: Timer) => [x.title, x.detail].filter(Boolean).join(' · ')
 
 const RING_AGAIN_MS = 5000
 
@@ -73,15 +74,15 @@ export function TimerHost() {
     const up = ringDue(Date.now())
     if (!up.length) return
     beep(); navigator.vibrate?.([300, 150, 300])
-    announce(`Timer done: ${up.map(t => [t.label, about(t)].filter(Boolean).join(', ')).join('; ')}`, true)
+    announce(t('Timer done: {timers}', { timers: up.map(x => [x.label, about(x)].filter(Boolean).join(', ')).join('; ') }), true)
     // In another tab or app: a notification, if this device already allows them (never asks here).
     // Inside the iPhone/Android app the app rings them itself (the Live Activity's alarms).
     if (document.hidden && !inNativeApp() && 'Notification' in window && Notification.permission === 'granted') {
-      void navigator.serviceWorker?.ready.then(reg => reg.showNotification(`Time's up: ${up.map(t => timerName(t.label)).join(', ')}`, { body: about(up[0]), tag: 'kinwall-timer' })).catch(() => {})
+      void navigator.serviceWorker?.ready.then(reg => reg.showNotification(t("Time's up: {timers}", { timers: up.map(x => timerName(x.label)).join(', ') }), { body: about(up[0]), tag: 'kinwall-timer' })).catch(() => {})
     }
   }, [now, timers])
   // It keeps ringing, every few seconds, until someone taps OK.
-  const ringing = timers.some(t => t.done)
+  const ringing = timers.some(x => x.done)
   useEffect(() => {
     if (!ringing) return
     const again = setInterval(() => { beep(); navigator.vibrate?.([300, 150, 300]) }, RING_AGAIN_MS)
@@ -89,16 +90,16 @@ export function TimerHost() {
   }, [ringing])
   // The soonest timer on the Lock Screen and in the Dynamic Island, "Done" once it rings, gone when dismissed.
   useEffect(() => {
-    const a = timerActivity(timers.map(t => ({ ...t, paused: t.left !== undefined })))
+    const a = timerActivity(timers.map(x => ({ ...x, paused: x.left !== undefined })))
     if (a) tellAppActivity('cooking', a); else endAppActivity('cooking')
   }, [timers])
 
-  const rang = timers.filter(t => t.done)
+  const rang = timers.filter(x => x.done)
   if (!rang.length) return null
   return createPortal(
     <div className="timer-alarm">
-      <span>⏰ Time's up: {rang.map(t => [t.label, about(t)].filter(Boolean).join(', ')).join('; ')}</span>
-      <button type="button" className="btn" onClick={dismissRung}>OK</button>
+      <span>⏰ {t("Time's up: {timers}", { timers: rang.map(x => [x.label, about(x)].filter(Boolean).join(', ')).join('; ') })}</span>
+      <button type="button" className="btn" onClick={dismissRung}>{t('OK')}</button>
     </div>,
     document.body,
   )
@@ -107,17 +108,17 @@ export function TimerHost() {
 /** The timers that haven't rung, each with Pause/Resume, Reset and Cancel. */
 export function TimerList({ timers, now, className = '' }: { timers: Timer[]; now: number; className?: string }) {
   return (
-    <ul className={`timer-bar ${className}`} aria-label="Running timers">
-      {timers.filter(t => !t.done).map(t => {
-        const paused = t.left !== undefined, name = [t.label, t.detail].filter(Boolean).join(', ')
-        return <li key={t.id}>
-          <span className="timer-bar-label">{t.label}{about(t) && <small>{about(t)}</small>}</span>
-          <strong className={`timer-clock ${paused ? 'timer-clock-paused' : ''}`}>{clock(remaining(t, now))}{paused && <span className="sr-only">, paused</span>}</strong>
+    <ul className={`timer-bar ${className}`} aria-label={t('Running timers')}>
+      {timers.filter(x => !x.done).map(x => {
+        const paused = x.left !== undefined, name = [x.label, x.detail].filter(Boolean).join(', ')
+        return <li key={x.id}>
+          <span className="timer-bar-label">{x.label}{about(x) && <small>{about(x)}</small>}</span>
+          <strong className={`timer-clock ${paused ? 'timer-clock-paused' : ''}`}>{clock(remaining(x, now))}{paused && <span className="sr-only">{t(', paused')}</span>}</strong>
           {paused
-            ? <button type="button" className="icon-btn" aria-label={`Resume ${name} timer`} onClick={() => resumeTimer(t.id)}><PlayIcon width={18} height={18} /></button>
-            : <button type="button" className="icon-btn" aria-label={`Pause ${name} timer`} onClick={() => pauseTimer(t.id)}><PauseIcon width={18} height={18} /></button>}
-          <button type="button" className="icon-btn" aria-label={`Reset ${name} timer`} onClick={() => resetTimer(t.id)}><ResetIcon width={18} height={18} /></button>
-          <button type="button" className="icon-btn" aria-label={`Cancel ${name} timer`} onClick={() => stopTimer(t.id)}><XIcon width={18} height={18} /></button>
+            ? <button type="button" className="icon-btn" aria-label={t('Resume {name} timer', { name })} onClick={() => resumeTimer(x.id)}><PlayIcon width={18} height={18} /></button>
+            : <button type="button" className="icon-btn" aria-label={t('Pause {name} timer', { name })} onClick={() => pauseTimer(x.id)}><PauseIcon width={18} height={18} /></button>}
+          <button type="button" className="icon-btn" aria-label={t('Reset {name} timer', { name })} onClick={() => resetTimer(x.id)}><ResetIcon width={18} height={18} /></button>
+          <button type="button" className="icon-btn" aria-label={t('Cancel {name} timer', { name })} onClick={() => stopTimer(x.id)}><XIcon width={18} height={18} /></button>
         </li>
       })}
     </ul>
@@ -141,7 +142,7 @@ export function TimerButton() {
   const left = next && clock(remaining(next, now))
   return (
     <>
-      <button className={`icon-btn header-bell ${next ? 'header-timer-on' : ''}`} onClick={() => setOpen(true)} aria-label={next ? `Timers, ${timerName(next.label)} has ${left} left` : 'Timer'}>
+      <button className={`icon-btn header-bell ${next ? 'header-timer-on' : ''}`} onClick={() => setOpen(true)} aria-label={next ? t('Timers, {name} has {left} left', { name: timerName(next.label), left: left ?? '' }) : t('Timer')}>
         <TimerIcon width={22} height={22} />
         {next && <span className="header-timer-clock" aria-hidden="true">{left}</span>}
       </button>
@@ -162,22 +163,22 @@ function TimerSheet({ onClose }: { onClose: () => void }) {
     start({ label: name.trim() ? `${name.trim()} · ${dur}` : dur, seconds: Math.round(min * 60) })
     setName(''); setMinutes('')
   }
-  const waiting = timers.filter(t => !t.done)
+  const waiting = timers.filter(x => !x.done)
   return (
-    <Sheet title="Timers" onClose={onClose}>
+    <Sheet title={t('Timers')} onClose={onClose}>
       {waiting.length > 0 && <TimerList timers={waiting} now={now} className="timer-bar-stack" />}
       <div className="field">
-        <label htmlFor="timer-name">Name (optional)</label>
-        <input id="timer-name" type="text" value={name} maxLength={40} placeholder="Homework" onChange={e => setName(e.target.value)} />
+        <label htmlFor="timer-name">{t('Name (optional)')}</label>
+        <input id="timer-name" type="text" value={name} maxLength={40} placeholder={t('Homework')} onChange={e => setName(e.target.value)} />
       </div>
-      <div className="chip-row timer-presets" role="group" aria-label="Start a timer">
+      <div className="chip-row timer-presets" role="group" aria-label={t('Start a timer')}>
         {PRESETS.map(m => <button key={m} type="button" className="chip" onClick={() => go(m)}>{durationLabel(m)}</button>)}
       </div>
       <form className="field timer-custom" onSubmit={e => { e.preventDefault(); if (valid) go(custom) }}>
-        <label htmlFor="timer-minutes">Other time (minutes)</label>
+        <label htmlFor="timer-minutes">{t('Other time (minutes)')}</label>
         <div className="timer-custom-row">
           <input id="timer-minutes" type="text" inputMode="decimal" value={minutes} placeholder="25" onChange={e => setMinutes(e.target.value)} />
-          <button type="submit" className="btn btn-primary" disabled={!valid}>Start</button>
+          <button type="submit" className="btn btn-primary" disabled={!valid}>{t('Start')}</button>
         </div>
       </form>
     </Sheet>

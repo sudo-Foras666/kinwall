@@ -7,6 +7,7 @@ import { mealDayLabel, servingsLabel, SLOT_LABEL } from './meal-date.ts'
 import { IngredientAmount } from './RecipeSheet.tsx'
 import type { List } from './types.ts'
 import { KIT_QUALIFIER, type BasicChoices, type ShoppingProjection } from './meal-types.ts'
+import { t, tn } from './i18n.ts'
 
 // The grocery list last used on this device, so a family with several doesn't pick it every time.
 const LAST_LIST_KEY = 'kinwall.mealGroceryList'
@@ -45,14 +46,14 @@ export default function MealProjection({ from: initialFrom, to: initialTo, admin
       setLists(grocery); setListError('')
       // One grocery list: that one. Several: the family's default Groceries list, else the one this device used last.
       setListId(id => id || (grocery.length === 1 ? grocery[0].id : (grocery.find(list => list.isDefault) ?? grocery.find(list => list.id === lastList()))?.id ?? ''))
-    }).catch(e => { if (!canceled) setListError(e instanceof Error ? e.message : 'Could not load grocery lists.') })
+    }).catch(e => { if (!canceled) setListError(e instanceof Error ? e.message : t('Could not load grocery lists.')) })
     return () => { canceled = true }
   }, [tick, refreshTick])
   useEffect(() => {
     let canceled = false
     if (validRange) api.getMealProjection(from, to, listId || undefined).then(data => {
       if (!canceled) setResult({ key: requestKey, projection: data })
-    }).catch(e => { if (!canceled) setResult({ key: requestKey, error: e instanceof Error ? e.message : 'Could not load the grocery preview.' }) })
+    }).catch(e => { if (!canceled) setResult({ key: requestKey, error: e instanceof Error ? e.message : t('Could not load the grocery preview.') }) })
     return () => { canceled = true }
   }, [from, to, listId, validRange, requestKey])
   const loading = validRange && result?.key !== requestKey
@@ -70,56 +71,57 @@ export default function MealProjection({ from: initialFrom, to: initialTo, admin
       const result = await api.applyMealProjection({ from, to, listId, omitKeys: current.items.filter(isOmitted).map(item => item.key), includeNotes, includeKitItems: true, ...(answers && { basics: answers }) })
       rememberList(listId)
       // Clear immediately so a failed refresh cannot leave an already-applied preview actionable.
-      setResult(null); setTick(t => t + 1); reloadCore(); toast(`Added ${result.added} grocery item${result.added === 1 ? '' : 's'}. Previously applied ingredients are skipped.`)
-    } catch (e) { setApplyError(e instanceof Error ? `${e.message}. Refresh the preview, then retry safely.` : 'Could not add these groceries. You can retry safely.'); setResult(null); setTick(t => t + 1) }
+      setResult(null); setTick(n => n + 1); reloadCore(); toast(tn(result.added, 'Added {n} grocery item. Previously applied ingredients are skipped.', 'Added {n} grocery items. Previously applied ingredients are skipped.'))
+    } catch (e) { setApplyError(e instanceof Error ? t('{error}. Refresh the preview, then retry safely.', { error: e.message }) : t('Could not add these groceries. You can retry safely.')); setResult(null); setTick(n => n + 1) }
     finally { setBusy(false) }
   }
   const close = () => { if (!busy) onClose() }
-  return <Sheet title="Groceries for these meals" onClose={close} dismissable={!busy} actions={admin ? <button className="btn btn-primary" disabled={busy || loading || !listId || !selected.length || !lists?.some(list => list.id === listId)} onClick={() => void apply()}>{busy ? 'Applying…' : `Add ${selected.length} item${selected.length === 1 ? '' : 's'} to list`}</button> : undefined}>
-    <p>Review ingredients before adding them. Existing list items stay as they are; previously applied meal ingredients are skipped.</p>
+  const [noListsBefore, noListsAfter] = t('No grocery lists yet. {link} to add these ingredients.').split('{link}')
+  return <Sheet title={t('Groceries for these meals')} onClose={close} dismissable={!busy} actions={admin ? <button className="btn btn-primary" disabled={busy || loading || !listId || !selected.length || !lists?.some(list => list.id === listId)} onClick={() => void apply()}>{busy ? t('Applying…') : tn(selected.length, 'Add {n} item to list', 'Add {n} items to list')}</button> : undefined}>
+    <p>{t('Review ingredients before adding them. Existing list items stay as they are; previously applied meal ingredients are skipped.')}</p>
     <fieldset className="meal-fieldset" disabled={busy}>
       <div className="meal-form-row">
-        <div className="field"><label htmlFor={`${id}-from`}>From</label><input id={`${id}-from`} type="date" required value={from} onChange={e => { setFrom(e.target.value); setOmitted([]) }} /></div>
-        <div className="field"><label htmlFor={`${id}-to`}>Through</label><input id={`${id}-to`} type="date" required min={from} value={to} onChange={e => { setTo(e.target.value); setOmitted([]) }} /></div>
+        <div className="field"><label htmlFor={`${id}-from`}>{t('From')}</label><input id={`${id}-from`} type="date" required value={from} onChange={e => { setFrom(e.target.value); setOmitted([]) }} /></div>
+        <div className="field"><label htmlFor={`${id}-to`}>{t('Through')}</label><input id={`${id}-to`} type="date" required min={from} value={to} onChange={e => { setTo(e.target.value); setOmitted([]) }} /></div>
       </div>
-      {!validRange && <p className="field-error" role="alert">Choose an ordered date range of up to 367 days.</p>}
-      {lists && lists.length > 1 && <div className="field"><label htmlFor={`${id}-list`}>Grocery list</label><select id={`${id}-list`} value={listId} onChange={e => { setListId(e.target.value); setOmitted([]) }}><option value="">Choose a grocery list</option>{lists.map(list => <option key={list.id} value={list.id}>{list.emoji} {list.name}</option>)}</select></div>}
-      {lists?.length === 1 && <p className="field-hint">Adding to {lists[0].emoji} {lists[0].name}.</p>}
-      {lists?.length === 0 && <p>No grocery lists yet. <a href="#/lists" onClick={close}>Create a Groceries list in Lists</a> to add these ingredients.</p>}
-      {admin && <label className="meal-check"><input type="checkbox" checked={includeNotes} onChange={e => setIncludeNotes(e.target.checked)} /> Include source meals and preparation details as notes</label>}
-      {!admin && <p className="field-hint">An admin can add these ingredients to a grocery list.</p>}
-      {loading && <p role="status">Calculating ingredients…</p>}
+      {!validRange && <p className="field-error" role="alert">{t('Choose an ordered date range of up to 367 days.')}</p>}
+      {lists && lists.length > 1 && <div className="field"><label htmlFor={`${id}-list`}>{t('Grocery list')}</label><select id={`${id}-list`} value={listId} onChange={e => { setListId(e.target.value); setOmitted([]) }}><option value="">{t('Choose a grocery list')}</option>{lists.map(list => <option key={list.id} value={list.id}>{list.emoji} {list.name}</option>)}</select></div>}
+      {lists?.length === 1 && <p className="field-hint">{t('Adding to {list}.', { list: `${lists[0].emoji} ${lists[0].name}` })}</p>}
+      {lists?.length === 0 && <p>{noListsBefore}<a href="#/lists" onClick={close}>{t('Create a Groceries list in Lists')}</a>{noListsAfter}</p>}
+      {admin && <label className="meal-check"><input type="checkbox" checked={includeNotes} onChange={e => setIncludeNotes(e.target.checked)} /> {t('Include source meals and preparation details as notes')}</label>}
+      {!admin && <p className="field-hint">{t('An admin can add these ingredients to a grocery list.')}</p>}
+      {loading && <p role="status">{t('Calculating ingredients…')}</p>}
       {current && !loading && <>
-        {current.items.length === 0 ? <p className="state-card">No recipe ingredients in this date range. Free-form and dining-out meals do not create ingredient requirements.</p> : <>
-          {admin && <div className="meal-actions"><button type="button" className="link-btn" onClick={() => setOmitted([])}>Select all unapplied</button><button type="button" className="link-btn" onClick={() => setOmitted(current.items.map(item => item.key))}>Omit all</button></div>}
+        {current.items.length === 0 ? <p className="state-card">{t('No recipe ingredients in this date range. Free-form and dining-out meals do not create ingredient requirements.')}</p> : <>
+          {admin && <div className="meal-actions"><button type="button" className="link-btn" onClick={() => setOmitted([])}>{t('Select all unapplied')}</button><button type="button" className="link-btn" onClick={() => setOmitted(current.items.map(item => item.key))}>{t('Omit all')}</button></div>}
           <ul className="meal-projection-list">{current.items.map((item, index) => <li key={item.key} className="meal-projection-item">
             <div className="meal-check">
               {admin && <input id={`${id}-item-${index}`} type="checkbox" checked={!isOmitted(item) && !item.applied} disabled={item.applied} onChange={e => { const toggle = (keys: string[], on: boolean) => on ? [...keys, item.key] : keys.filter(key => key !== item.key); setOmitted(keys => toggle(keys, !e.target.checked)); if (item.qualifier === KIT_QUALIFIER) setKitIncluded(keys => toggle(keys, e.target.checked)) }} />}
               <label htmlFor={admin ? `${id}-item-${index}` : undefined}><strong>{item.name}</strong> — <IngredientAmount quantity={item.quantity} unit={item.unit} qualifier={item.qualifier} /></label>
             </div>
-            <p className="field-hint">{item.applied ? 'Already applied to this list' : item.partiallyApplied ? 'Partly applied — only remaining contributions will be added' : 'Not yet applied'}{item.basicId ? ' · A basic: you’ll be asked if it’s made already' : ''}{item.category ? ` · ${item.category}` : ''}</p>
-            {item.changedSinceApplied && <p className="field-error">This meal changed after it was applied. Check the existing grocery item; adding again will not update it.</p>}
-            {!item.scalable && <p className="field-hint">Amount needs review; this quantity was not scaled.</p>}
-            {item.matches.length > 0 && <p className="field-hint">Existing matches: {item.matches.map(match => `${match.title}${match.quantity ? ` (${match.quantity})` : ''}${match.done ? ' — checked off' : ''}`).join(', ')}. Omit this ingredient if you already have enough.</p>}
-            <details><summary>{item.sources.length} source meal{item.sources.length === 1 ? '' : 's'}</summary><ul>{item.sources.map(source => <li key={source.sourceRef}>
-              {mealDayLabel(source.date)} · {SLOT_LABEL[source.slot]} · {source.title} ({source.recipeName}) — <IngredientAmount quantity={source.quantity} unit={source.unit} qualifier={source.qualifier} />
-              {source.preparation ? ` · ${source.preparation}` : ''}{source.applied ? ' · Already applied' : ''}
-              {!source.scalable && ` · Check for ${servingsLabel(source.servings)} (recipe: ${source.defaultServings})`}
+            <p className="field-hint">{item.applied ? t('Already applied to this list') : item.partiallyApplied ? t('Partly applied — only remaining contributions will be added') : t('Not yet applied')}{item.basicId ? ` · ${t('A basic: you’ll be asked if it’s made already')}` : ''}{item.category ? ` · ${item.category}` : ''}</p>
+            {item.changedSinceApplied && <p className="field-error">{t('This meal changed after it was applied. Check the existing grocery item; adding again will not update it.')}</p>}
+            {!item.scalable && <p className="field-hint">{t('Amount needs review; this quantity was not scaled.')}</p>}
+            {item.matches.length > 0 && <p className="field-hint">{t('Existing matches: {matches}. Omit this ingredient if you already have enough.', { matches: item.matches.map(match => `${match.title}${match.quantity ? ` (${match.quantity})` : ''}${match.done ? ` — ${t('checked off')}` : ''}`).join(', ') })}</p>}
+            <details><summary>{tn(item.sources.length, '{n} source meal', '{n} source meals')}</summary><ul>{item.sources.map(source => <li key={source.sourceRef}>
+              {mealDayLabel(source.date)} · {t(SLOT_LABEL[source.slot])} · {source.title} ({source.recipeName}) — <IngredientAmount quantity={source.quantity} unit={source.unit} qualifier={source.qualifier} />
+              {source.preparation ? ` · ${source.preparation}` : ''}{source.applied ? ` · ${t('Already applied')}` : ''}
+              {!source.scalable && ` · ${t('Check for {servings} (recipe: {n})', { servings: servingsLabel(source.servings), n: source.defaultServings })}`}
             </li>)}</ul></details>
           </li>)}</ul>
         </>}
       </>}
     </fieldset>
-    {asking && <Sheet title="Made already?" onClose={() => setAsking(null)} actions={<>
-      <button className="btn btn-secondary" onClick={() => setAsking(null)}>Cancel</button>
-      <button className="btn btn-primary" onClick={() => void apply(asking)}>Add to list</button>
+    {asking && <Sheet title={t('Made already?')} onClose={() => setAsking(null)} actions={<>
+      <button className="btn btn-secondary" onClick={() => setAsking(null)}>{t('Cancel')}</button>
+      <button className="btn btn-primary" onClick={() => void apply(asking)}>{t('Add to list')}</button>
     </>}>
-      <p className="meal-sheet-intro">{basics.length === 1 ? 'This is something you make yourself.' : 'These are things you make yourself.'} If it's made already, it stays off the list. If not, what goes into it is added instead.</p>
-      {basics.map(([basicId, name]) => <div key={basicId} className="field"><label htmlFor={`${id}-basic-${basicId}`}>{name}: made already?</label>
+      <p className="meal-sheet-intro">{basics.length === 1 ? t('This is something you make yourself.') : t('These are things you make yourself.')} {t("If it's made already, it stays off the list. If not, what goes into it is added instead.")}</p>
+      {basics.map(([basicId, name]) => <div key={basicId} className="field"><label htmlFor={`${id}-basic-${basicId}`}>{t('{name}: made already?', { name })}</label>
         <select id={`${id}-basic-${basicId}`} value={asking[basicId] ?? 'ingredients'} onChange={e => setAsking(a => ({ ...a, [basicId]: e.target.value as BasicChoices[string] }))}>
-          <option value="made">Made already</option><option value="ingredients">Add its ingredients</option>
+          <option value="made">{t('Made already')}</option><option value="ingredients">{t('Add its ingredients')}</option>
         </select></div>)}
     </Sheet>}
-    {(applyError || error || listError) && <div role="alert"><p className="field-error">{applyError || error || listError}</p><button className="btn btn-secondary" disabled={busy} onClick={() => { setApplyError(''); setTick(t => t + 1) }}>Refresh preview</button></div>}
+    {(applyError || error || listError) && <div role="alert"><p className="field-error">{applyError || error || listError}</p><button className="btn btn-secondary" disabled={busy} onClick={() => { setApplyError(''); setTick(n => n + 1) }}>{t('Refresh preview')}</button></div>}
   </Sheet>
 }

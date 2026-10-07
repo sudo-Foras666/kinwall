@@ -2,6 +2,8 @@
 // drawn over an arbitrary member/accent color - so a very light or very dark custom color still
 // stays legible on avatars, event chips, and accent-colored buttons.
 
+import { t } from './i18n.ts'
+
 function luminance(hex: string): number {
   const n = hex.replace('#', '')
   const [r, g, b] = [0, 2, 4].map(i => parseInt(n.slice(i, i + 2), 16) / 255)
@@ -62,4 +64,4 @@ const COLOR_NAMES: Record<string, string> = {
   '#FF6B6B': 'Coral red', '#6FCF97': 'Green', '#4DA3FF': 'Blue', '#2FBFB0': 'Teal',
   '#222222': 'Black', '#FFFFFF': 'White', '#8B5A2B': 'Brown', '#8A8A8A': 'Gray', // Paint's basics
 }
-export const colorName = (hex: string) => COLOR_NAMES[hex.toUpperCase()] ?? hex
+export const colorName = (hex: string) => { const n = COLOR_NAMES[hex.toUpperCase()]; return n ? t(n) : hex }

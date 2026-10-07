@@ -151,6 +151,11 @@ export const SLEEP_ANSWERS = ['great', 'good', 'ok', 'poorly', 'terrible'] as co
 export const FEELINGS = ['great', 'good', 'fine', 'ok', 'bad', 'awful', 'tired', 'sore'] as const; // built in; "Other" adds the person's own
 
 
+// Display languages the web app comes in (web/src/i18n.ts). A member's pick follows them to their
+// own devices; null follows the device (its own pick, then the browser's language).
+export const LANGUAGES = ['en', 'de'] as const;
+export const LanguageSchema = z.enum(LANGUAGES).openapi({ description: "Display language: 'en' (English) or 'de' (Deutsch)" });
+
 export const MemberSchema = z
   .object({
     id: z.string(),
@@ -175,6 +180,7 @@ export const MemberSchema = z
     privateJournal: z
       .object({ on: z.boolean(), allowed: z.boolean() })
       .openapi({ description: "Private journal: on = new entries are private (only their own devices read the words); allowed = always for a grown-up, for a kid when a parent allows it. Changed with PUT /api/members/{id}/journal/privacy." }),
+    language: LanguageSchema.nullable().openapi({ description: "The language the app shows itself in on their own devices, or null to follow each device. Their own device sets it with PUT /api/members/{id}/language." }),
   })
   .openapi('Member');
 
@@ -189,6 +195,7 @@ export const MemberInputSchema = z
     needsApproval: z.boolean().optional().openapi({ description: 'Ignored for a grown-up (stays false).' }),
     transitionReminders: TransitionRemindersSchema.optional(),
     tempCheck: TempCheckSettingsSchema.optional(),
+    language: LanguageSchema.nullable().optional().openapi({ description: 'Default null (each device decides).' }),
   })
   .openapi('MemberInput');
 

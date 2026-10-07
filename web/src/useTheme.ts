@@ -4,6 +4,7 @@ import type { ClockPos } from './nightClock.ts'
 import type { Appearance, ColorScheme, CustomColors, DeviceDensity, Settings, TextScale, TidbitSettings, Typeface } from './types.ts'
 import { deviceTypeface, resolveTypeface } from './typeface.ts'
 import { deviceTimeFormat } from './timeFormat.ts'
+import type { Lang } from './i18n.ts'
 import { accentFill, logoHeads, readableOn } from './color.ts'
 import { api, getKey } from './api.ts'
 import { DEFAULT_SKIN_ID, findSkin, seasonalSkinId, tokensFor } from './skins.ts'
@@ -32,6 +33,7 @@ export type DeviceAppearance = Partial<Pick<Appearance, 'themeMode' | 'textScale
   lowStim?: boolean // flat, calm, no motion - see [data-lowstim] in styles.css
   font?: Typeface // this device's typeface ('default' = Nunito); absent = the family's
   timeFormat?: '12' | '24' // this device's clock times; absent = the family's (timeFormat.ts)
+  language?: Lang // this device's display language, under its owner's own (i18n.ts pickLang); absent = the browser's
   clockZone?: 'device' // the clock and date show this device's own time zone; absent = the family's (timezone.ts clockTimeZone)
   nowNext?: boolean // Now / Next card on the calendar; absent = on
   keepAwake?: boolean // keep the screen on while Kinwall is showing; absent = on for wall screens and kids' devices, off for parent devices

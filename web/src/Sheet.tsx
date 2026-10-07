@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { XIcon } from './icons.tsx'
 import { reducedMotion } from './a11y.tsx'
 import { useKeyboard } from './keyboard.ts'
+import { t } from './i18n.ts'
 
 export default function Sheet({ title, onClose, children, actions, variant, role = 'dialog', describedBy, dismissable = true, onCancel }: {
   title: string
@@ -116,7 +117,7 @@ export default function Sheet({ title, onClose, children, actions, variant, role
           <div className="sheet-grabber" />
           <div className="sheet-header">
             <h2 className="sheet-title" id={titleId}>{title}</h2>
-            <button className="icon-btn" onClick={onCancel ?? onClose} aria-label={onCancel ? 'Cancel' : 'Close'}><XIcon width={20} height={20} /></button>
+            <button className="icon-btn" onClick={onCancel ?? onClose} aria-label={onCancel ? t('Cancel') : t('Close')}><XIcon width={20} height={20} /></button>
           </div>
         </div>
         <div className="sheet-body scroll-y">{children}</div>

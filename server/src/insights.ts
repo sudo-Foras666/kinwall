@@ -7,6 +7,7 @@
 // it about one person and one household day, with nothing that isn't needed.
 
 import { formatTime } from './timeFormat.ts';
+import { tr, trn, type Lang } from './i18n.ts';
 
 export type Sleep = 'great' | 'good' | 'ok' | 'poorly' | 'terrible';
 export type Outcome = 'yes' | 'partly' | 'no';
@@ -40,14 +41,15 @@ export type Connection = { id: string; text: string; detail: string; confidence:
 const sleptWell = (d: InsightDay) => d.sleep === 'great' || d.sleep === 'good';
 const late = (d: InsightDay | undefined) => !!d?.lastEventEnd && d.lastEventEnd > LATE_AFTER;
 const pct = (t: Tally) => (t.hit / t.n) * 100;
-const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
 type Candidate = {
   id: string;
   /** Which side a day is on ('a' is the condition), or null to leave it out. */
   side: (d: InsightDay, before: InsightDay | undefined) => 'a' | 'b' | null;
   hit: (d: InsightDay) => boolean;
-  text: (more: 'more' | 'less') => string;
+  /** English, each way round; {n} is BUSY_EVENTS. */
+  text: { more: string; less: string };
+  /** {late} is the late-event time ("8 PM"), {n} BUSY_EVENTS. */
   detail: string;
 };
 
@@ -56,40 +58,40 @@ const CANDIDATES: Candidate[] = [
     id: 'sleep-goal',
     side: (d) => (d.goalOutcome && d.sleep ? (sleptWell(d) ? 'a' : 'b') : null),
     hit: (d) => d.goalOutcome === 'yes',
-    text: (m) => `Goals were met ${m} often after good sleep`,
+    text: { more: 'Goals were met more often after good sleep', less: 'Goals were met less often after good sleep' },
     detail: 'Days after sleeping well or great, compared with other days. Only days with a goal check count.',
   },
   {
     id: 'late-sleep',
     side: (d, before) => (before && d.sleep ? (late(before) ? 'a' : 'b') : null),
     hit: sleptWell,
-    text: (m) => `Slept well ${m} often after a late event`,
+    text: { more: 'Slept well more often after a late event', less: 'Slept well less often after a late event' },
     detail: 'Nights after an event that ended after {late}, compared with other nights. "Well" means well or great.',
   },
   {
     id: 'late-tired',
     side: (d, before) => (before && d.feelings.length ? (late(before) ? 'a' : 'b') : null),
     hit: (d) => d.feelings.some((f) => f.toLowerCase() === 'tired'),
-    text: (m) => `Felt tired ${m} often the day after a late event`,
+    text: { more: 'Felt tired more often the day after a late event', less: 'Felt tired less often the day after a late event' },
     detail: 'Days after an event that ended after {late}, compared with other days. Only days with feelings count.',
   },
   {
     id: 'busy-goal',
     side: (d) => (d.goalOutcome ? (d.events >= BUSY_EVENTS ? 'a' : 'b') : null),
     hit: (d) => d.goalOutcome === 'yes',
-    text: (m) => `Goals were met ${m} often on busy days, with ${BUSY_EVENTS} or more events`,
-    detail: `Days with ${BUSY_EVENTS} or more timed events on the calendar, compared with quieter days. Only days with a goal check count.`,
+    text: { more: 'Goals were met more often on busy days, with {n} or more events', less: 'Goals were met less often on busy days, with {n} or more events' },
+    detail: 'Days with {n} or more timed events on the calendar, compared with quieter days. Only days with a goal check count.',
   },
   {
     id: 'chores-mood',
     side: (d) => (d.feelings.length ? (d.chores > 0 ? 'a' : 'b') : null),
     hit: (d) => d.feelings.some((f) => ['great', 'good'].includes(f.toLowerCase())),
-    text: (m) => `Felt great or good ${m} often on days with chores done`,
+    text: { more: 'Felt great or good more often on days with chores done', less: 'Felt great or good less often on days with chores done' },
     detail: 'Days with at least one chore done, compared with days without. Only days with feelings count.',
   },
 ];
 
-function connection(c: Candidate, days: InsightDay[], late: string): Connection | null {
+function connection(c: Candidate, days: InsightDay[], late: string, lang: Lang): Connection | null {
   const a = { hit: 0, n: 0 };
   const b = { hit: 0, n: 0 };
   days.forEach((d, i) => {
@@ -104,49 +106,52 @@ function connection(c: Candidate, days: InsightDay[], late: string): Connection 
   if (Math.abs(diff) < MIN_DIFF) return null;
   const clear = Math.min(a.n, b.n) >= CLEAR.group && Math.abs(diff) >= CLEAR.diff;
   return {
-    id: c.id, text: `${c.text(diff > 0 ? 'more' : 'less')} (${a.hit} of ${a.n} vs ${b.hit} of ${b.n})`, detail: c.detail.replace('{late}', late),
+    id: c.id,
+    text: `${tr(lang, c.text[diff > 0 ? 'more' : 'less'], { n: BUSY_EVENTS })} ${tr(lang, '({a} of {an} vs {b} of {bn})', { a: a.hit, an: a.n, b: b.hit, bn: b.n })}`,
+    detail: tr(lang, c.detail, { late, n: BUSY_EVENTS }),
     confidence: clear ? 'clear' : 'early', a, b,
   };
 }
 
 const prevDay = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
-function duration(minutes: number) {
+function duration(lang: Lang, minutes: number) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return h ? (m ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+  return tr(lang, h ? (m ? '{h} h {m} min' : '{h} h') : '{m} min', { h, m });
 }
 
-function summarize(days: InsightDay[]) {
+function summarize(days: InsightDay[], lang: Lang) {
   const out: { id: string; text: string }[] = [];
   const add = (id: string, text: string) => out.push({ id, text });
   const sum = (f: (d: InsightDay) => number) => days.reduce((s, d) => s + f(d), 0);
-  add('checkins', `Checked in on ${days.filter((d) => d.checkedIn).length} of ${plural(days.length, 'day')}`);
+  add('checkins', trn(lang, days.length, 'Checked in on {x} of {n} day', 'Checked in on {x} of {n} days', { x: days.filter((d) => d.checkedIn).length }));
   const slept = days.filter((d) => d.sleep);
-  if (slept.length) add('sleep', `Slept well or great on ${slept.filter(sleptWell).length} of ${plural(slept.length, 'night')}`);
+  if (slept.length) add('sleep', trn(lang, slept.length, 'Slept well or great on {x} of {n} night', 'Slept well or great on {x} of {n} nights', { x: slept.filter(sleptWell).length }));
   const goals = days.filter((d) => d.goalSet);
   if (goals.length) {
     const partly = goals.filter((d) => d.goalOutcome === 'partly').length;
-    add('goals', `Met ${goals.filter((d) => d.goalOutcome === 'yes').length} of ${plural(goals.length, 'goal')}${partly ? `, and partly met ${partly} more` : ''}`);
+    const met = trn(lang, goals.length, 'Met {x} of {n} goal', 'Met {x} of {n} goals', { x: goals.filter((d) => d.goalOutcome === 'yes').length });
+    add('goals', partly ? tr(lang, '{met}, and partly met {n} more', { met, n: partly }) : met);
   }
   const chores = sum((d) => d.chores);
-  if (chores) add('chores', `Did ${plural(chores, 'chore')} for ${plural(sum((d) => d.points), 'point')}`);
+  if (chores) add('chores', tr(lang, 'Did {chores} for {points}', { chores: trn(lang, chores, '{n} chore', '{n} chores'), points: trn(lang, sum((d) => d.points), '{n} point', '{n} points') }));
   const minutes = sum((d) => d.activityMinutes);
-  if (minutes) add('activity', `Spent ${duration(minutes)} on activities`);
+  if (minutes) add('activity', tr(lang, 'Spent {time} on activities', { time: duration(lang, minutes) }));
   const books = sum((d) => d.booksFinished);
-  if (books) add('books', `Finished ${plural(books, 'book')}`);
+  if (books) add('books', trn(lang, books, 'Finished {n} book', 'Finished {n} books'));
   const busiest = Math.max(0, ...days.map((d) => d.events));
   const busy = days.filter((d) => d.events >= BUSY_EVENTS).length;
-  if (busy) add('busy', `${BUSY_EVENTS} or more events on ${plural(busy, 'day')} (busiest: ${busiest})`);
-  else if (busiest) add('busy', `Busiest day had ${plural(busiest, 'event')}`);
+  if (busy) add('busy', trn(lang, busy, '{x} or more events on {n} day (busiest: {most})', '{x} or more events on {n} days (busiest: {most})', { x: BUSY_EVENTS, most: busiest }));
+  else if (busiest) add('busy', trn(lang, busiest, 'Busiest day had {n} event', 'Busiest day had {n} events'));
   const entries = sum((d) => d.journalEntries);
-  if (entries) add('journal', `Wrote ${plural(entries, 'journal entry', 'journal entries')}`);
+  if (entries) add('journal', trn(lang, entries, 'Wrote {n} journal entry', 'Wrote {n} journal entries'));
   return out;
 }
 
 /** Summaries, the most common feelings and any connections for a run of consecutive days.
- * `h12`: the family's clock (timeFormat.ts), for "after 8 PM" / "after 20:00". */
-export function analyze(days: InsightDay[], h12 = true) {
+ * `h12`: the family's clock (timeFormat.ts), for "after 8 PM" / "after 20:00"; `lang`: the asker's (i18n.ts). */
+export function analyze(days: InsightDay[], h12 = true, lang: Lang = 'en') {
   const late = formatTime(LATE_AFTER, { h12, hourOnly: true });
   const counts = new Map<string, number>();
   for (const d of days) for (const f of new Set(d.feelings.map((f) => f.toLowerCase()))) counts.set(f, (counts.get(f) ?? 0) + 1);
@@ -154,11 +159,11 @@ export function analyze(days: InsightDay[], h12 = true) {
   const daysWithCheckIns = days.filter((d) => d.checkedIn).length;
   const ready = daysWithCheckIns >= MIN_CHECKIN_DAYS;
   return {
-    summary: summarize(days),
+    summary: summarize(days, lang),
     topFeelings,
     connections: {
       ready, daysWithCheckIns, needed: MIN_CHECKIN_DAYS,
-      list: ready ? CANDIDATES.map((c) => connection(c, days, late)).filter((c): c is Connection => !!c) : [],
+      list: ready ? CANDIDATES.map((c) => connection(c, days, late, lang)).filter((c): c is Connection => !!c) : [],
     },
   };
 }

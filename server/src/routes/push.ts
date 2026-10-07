@@ -6,7 +6,8 @@ import { parseMemberIds, resolveMemberIds } from '../calendar-members.ts';
 import { getVapidPublicKey, sendWebPush } from '../webpush.ts';
 import { encrypt } from '../crypto.ts';
 import { readFeatures } from './settings.ts';
-import { DEFAULT_PUSH_PREFS, loadSubs, MED_LATE, memberMatch, openNote, recordNotification } from '../notify.ts';
+import { DEFAULT_PUSH_PREFS, isMedLate, loadSubs, memberMatch, openNote, recordNotification } from '../notify.ts';
+import { requestLang, tr } from '../i18n.ts';
 import { medicationFeedFilter } from './medications.ts';
 import { ErrorSchema, NotificationSchema, NotifyInputSchema, PushSubscriptionInputSchema, PushSubscriptionPatchSchema, PushSubscriptionSchema } from '../schemas.ts';
 
@@ -209,7 +210,7 @@ pushRoutes.openapi(
     const row = await c.env.DB.prepare('SELECT * FROM push_subscriptions WHERE id = ?').bind(id).first<PushSubRow>();
     if (!row) return c.json({ error: 'not found' }, 404);
     if (!ownsOrAdmin(await resolveKey(c), row)) return c.json({ error: 'forbidden' }, 403);
-    const result = await sendWebPush(c.env, c.env.DB, row, { title: 'Notifications are on 🎉', body: 'This device will get the reminders you picked in Settings.', url: '/' });
+    const result = await sendWebPush(c.env, c.env.DB, row, { title: tr(requestLang(c), 'Notifications are on 🎉'), body: tr(requestLang(c), 'This device will get the reminders you picked in Settings.'), url: '/' });
     if (result.ok) await c.env.DB.prepare('UPDATE push_subscriptions SET last_success_at = ? WHERE id = ?').bind(new Date().toISOString(), id).run();
     else if (result.gone) await c.env.DB.prepare('DELETE FROM push_subscriptions WHERE id = ?').bind(id).run();
     return c.json({ ok: result.ok }, 200);
@@ -303,7 +304,7 @@ pushRoutes.openapi(
         .all<NotificationRow>()).results;
       for (const r of batch) {
         const n = await openNote(c.env, r);
-        if (!(who.hideLate && n.kind === 'medication' && n.title.endsWith(MED_LATE))) results.push(n);
+        if (!(who.hideLate && n.kind === 'medication' && isMedLate(n.title))) results.push(n);
       }
       if (batch.length < limit) break;
     }

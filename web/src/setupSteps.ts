@@ -1,6 +1,7 @@
 // The setup wizard's (Setup.tsx) choices, resume and error copy. Pure, so it's tested in
 // test/setupSteps.test.ts.
 import type { Member } from './types.ts'
+import { t } from './i18n.ts'
 
 export type Step = 'welcome' | 'passkey' | 'recovery' | 'household' | 'members' | 'owner' | 'calendars' | 'chores' | 'done'
 export type DeviceRole = 'admin'
@@ -21,10 +22,10 @@ export function resumeFor(step: Step, deviceRole: DeviceRole | null): SetupResum
 
 /** Wizard error copy from an API error's status: never the server's raw words. */
 export function setupErrorText(status: number | undefined, fallback: string): string {
-  if (status === 0) return "You're offline. Check your connection and try again."
-  if (status === 401 || status === 403) return "This device can't do this part of setup. Skip it for now and finish it later in Settings."
-  if (status === 409) return 'This Kinwall is already set up. Reload the page to sign in.'
-  if (status === 429) return 'Too many tries. Wait a few minutes and try again.'
+  if (status === 0) return t("You're offline. Check your connection and try again.")
+  if (status === 401 || status === 403) return t("This device can't do this part of setup. Skip it for now and finish it later in Settings.")
+  if (status === 409) return t('This Kinwall is already set up. Reload the page to sign in.')
+  if (status === 429) return t('Too many tries. Wait a few minutes and try again.')
   return fallback
 }
 

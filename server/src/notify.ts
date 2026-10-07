@@ -2,6 +2,8 @@
 // Each one is also recorded once (household-wide) in the in-app feed via recordNotification.
 // Called from the Workers cron (every 5 min, worker.ts) and the Node setInterval loop (node.ts,
 // every ~2 min) - both call runNotifications(env, now) directly, no HTTP round trip.
+// Words in the reader's language (i18n.ts loadLangs): a push in its device owner's (else the
+// family's), a feed row in its members' (else the family's), a person's own reminders in theirs.
 import type { KinwallDb } from './db.ts';
 import type { Env, WaitCtx } from './env.ts';
 import { waitUntil } from './env.ts';
@@ -19,10 +21,12 @@ import { sha256Hex } from './auth.ts';
 import { batteryFor } from './routes/insights.ts';
 import { eveningPending, LAST_NIGHT_UNTIL, lastNightSkipKey, morningAnswered } from './routes/temp-check.ts';
 import { mealLinksQuery, parseMealLinks, prepAt, prepFor } from './prepBy.ts';
-import { medFollowup, nudge, pickNudge, rememberNudge, stepHint, type NudgeSeen } from './nudges.ts';
+import { rememberNudge, stepHint, type NudgeSeen } from './nudges.ts';
 import { apnsConfigured, sendLiveActivity, swiftDate, unixSeconds } from './apns.ts';
 import { isSealed, seal, unseal, type EncryptionEnv } from './crypto.ts';
 import { formatTime, hour12For } from './timeFormat.ts';
+import { langsFrom, loadLangs, owner, perLang, tr, trn, type Lang, type Langs } from './i18n.ts';
+import { medFollowupIn, nudgeIn, pickNudgeIn } from './nudge-lang.ts';
 import { eventRowsFrom, eventRowsStmts, hiddenInstanceKeys, instanceKey } from './routes/events.ts';
 
 export const DEFAULT_PUSH_PREFS = {
@@ -117,6 +121,9 @@ export async function loadSubs(db: KinwallDb): Promise<PushSubRow[]> {
  * yet"): the feed leaves these off kids' devices and walls (routes/push.ts), after opening the note:
  * it's sealed, so SQL can't see which medicine notes are late. */
 export const MED_LATE = " medicine hasn't been marked yet";
+const MED_LATE_DE = ' noch nicht abgehakt'; // locales/de/notifications.ts, the same note in German
+/** Is this a parent-facing "hasn't been marked yet" medicine note, in any language? */
+export const isMedLate = (title: string) => title.endsWith(MED_LATE) || title.endsWith(MED_LATE_DE);
 
 // A device with no member_ids follows everyone. An event/target with no member_ids applies to
 // everyone. Otherwise: does the device follow at least one of the target's members?
@@ -218,8 +225,9 @@ export async function recordDeviceOwner(db: KinwallDb, device: string, owner: st
   if (!owner || owner === 'shared') return;
   const m = await db.prepare('SELECT name FROM members WHERE id = ?').bind(owner).first<{ name: string }>();
   if (!m) return;
-  const what = kind === 'kid' ? "A kid's device. " : kind === 'grownup' ? "A grown-up's device. " : '';
-  await recordNotification(db, { kind: 'privacy', title: `${device} now belongs to ${m.name}`, body: `${what}It opens ${m.name}'s journal, private entries too.`, memberIds: [owner], source: 'system' });
+  const lang = (await loadLangs(db)).member(owner);
+  const what = kind === 'kid' ? `${tr(lang, "A kid's device.")} ` : kind === 'grownup' ? `${tr(lang, "A grown-up's device.")} ` : '';
+  await recordNotification(db, { kind: 'privacy', title: tr(lang, '{device} now belongs to {name}', { device, name: m.name }), body: `${what}${tr(lang, "It opens {name}'s journal, private entries too.", { name: m.name })}`, memberIds: [owner], source: 'system' });
 }
 
 // The feed records the household-wide summary/nudge once a day: at the default time, or earlier
@@ -262,6 +270,7 @@ function fireTime(startIso: string, allDay: boolean, minutes: number, tz: string
 }
 
 const fmtTime = (iso: string, tz: string, h12: boolean): string => formatTime(iso, { tz, h12 });
+const subLang = (langs: Langs, sub: PushSubRow): Lang => langs.device(sub.api_key_id);
 
 export async function sendToSub(env: Env, db: KinwallDb, row: PushSubRow, payload: { title: string; body: string; url?: string; tag?: string }): Promise<void> {
   const result = await sendWebPush(env, db, row, payload);
@@ -275,7 +284,7 @@ export async function sendToSub(env: Env, db: KinwallDb, row: PushSubRow, payloa
 // mealName names a meal's event there ("Tuesday Tacos", not "Dinner · Tuesday Tacos").
 type Occurrence = { eventId: string; occurrenceKey: string; title: string; start: string; allDay: boolean; memberIds: string[]; effective: number[]; leadMinutes: number; travelMinutes: number; location: string | null; prepAt: string | null; prepFor: string[]; category: string | null; step: string | null; mealName: string | null };
 
-async function runEventReminders(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, defaultReminders: number[], subs: PushSubRow[], hold: boolean): Promise<void> {
+async function runEventReminders(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, defaultReminders: number[], subs: PushSubRow[], hold: boolean, langs: Langs): Promise<void> {
   const eligible = subs.filter((s) => subPrefs(s).eventReminders);
 
   const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -366,30 +375,34 @@ async function runEventReminders(env: Env, db: KinwallDb, now: Date, tz: string,
 
   for (const cand of due) {
     const emoji = cand.categoryId ? categoryEmojis.get(cand.categoryId) : null;
-    const when = cand.minutes === 0 ? 'Now' : cand.minutes % 60 === 0 ? `In ${cand.minutes / 60} hour${cand.minutes === 60 ? '' : 's'}` : `In ${cand.minutes} minutes`;
-    const timeLabel = cand.allDay ? 'All day' : fmtTime(cand.start, tz, h12);
     // Event name as the title: it's what you scan for, and iOS already adds "from Kinwall" under it.
     // First line is what shows collapsed; the rest appears when the notification is long-pressed.
     const who = cand.memberIds.map((id) => memberNames.get(id)).filter(Boolean).join(', ');
     const notes = cand.row.description?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     const leaveBy = cand.leadMinutes ? fmtTime(new Date(Date.parse(cand.start) - cand.leadMinutes * 60000).toISOString(), tz, h12) : null;
-    const lines = [
-      leaveBy ? `Leave by ${leaveBy} for ${cand.title} · starts ${timeLabel}` : `${when} · ${timeLabel}`,
-      cand.row.location && `📍 ${cand.row.location.replace(/\s*\n\s*/g, ', ')}`,
-      who && `👥 ${who}`,
-      `🗓 ${cand.calName}`,
-      notes && (notes.length > 140 ? `${notes.slice(0, 139)}…` : notes),
-    ].filter(Boolean);
     const at = cand.allDay ? cand.occurrenceKey : new Date(cand.start).toISOString();
-    const payload = {
-      title: `${emoji ? emoji + ' ' : ''}${cand.title}`,
-      body: lines.join('\n'),
-      url: `/#/calendar?event=${encodeURIComponent(cand.eventId)}&at=${encodeURIComponent(at)}`, // tap opens this event
-      tag: `event:${cand.eventId}`,
-    };
+    // The words in a language: the event members' for the feed row, each device's for its push.
+    const payloadIn = perLang((lang) => {
+      const when = cand.minutes === 0 ? tr(lang, 'Now') : cand.minutes % 60 === 0 ? trn(lang, cand.minutes / 60, 'In {n} hour', 'In {n} hours') : tr(lang, 'In {n} minutes', { n: cand.minutes });
+      const timeLabel = cand.allDay ? tr(lang, 'All day') : fmtTime(cand.start, tz, h12);
+      const lines = [
+        leaveBy ? tr(lang, 'Leave by {time} for {event} · starts {start}', { time: leaveBy, event: cand.title, start: timeLabel }) : `${when} · ${timeLabel}`,
+        cand.row.location && `📍 ${cand.row.location.replace(/\s*\n\s*/g, ', ')}`,
+        who && `👥 ${who}`,
+        `🗓 ${cand.calName}`,
+        notes && (notes.length > 140 ? `${notes.slice(0, 139)}…` : notes),
+      ].filter(Boolean);
+      return {
+        title: `${emoji ? emoji + ' ' : ''}${cand.title}`,
+        body: lines.join('\n'),
+        url: `/#/calendar?event=${encodeURIComponent(cand.eventId)}&at=${encodeURIComponent(at)}`, // tap opens this event
+        tag: `event:${cand.eventId}`,
+      };
+    });
 
     const feedKey = `feed:rem:${cand.eventId}:${cand.occurrenceKey}:${cand.minutes}`;
     if (!(await alreadySent(db, feedKey))) {
+      const payload = payloadIn(langs.members(cand.memberIds));
       await recordNotification(db, { kind: 'reminder', title: payload.title, body: payload.body, url: payload.url, memberIds: cand.memberIds, source: 'system', at: now });
       await markSent(db, feedKey, now);
     }
@@ -398,13 +411,13 @@ async function runEventReminders(env: Env, db: KinwallDb, now: Date, tz: string,
       if (!memberMatch(parseMemberIds(sub.member_ids), cand.memberIds)) continue;
       const key = `rem:${sub.id}:${cand.eventId}:${cand.occurrenceKey}:${cand.minutes}`;
       if (await alreadySent(db, key)) continue;
-      await sendToSub(env, db, sub, payload);
+      await sendToSub(env, db, sub, payloadIn(subLang(langs, sub)));
       await markSent(db, key, now);
     }
   }
 
-  if (!hold) await runTransitionReminders(env, db, now, tz, h12, occurrences, eligible);
-  await runLiveActivities(env, db, now, tz, h12, occurrences, hold);
+  if (!hold) await runTransitionReminders(env, db, now, tz, h12, occurrences, eligible, langs);
+  await runLiveActivities(env, db, now, tz, h12, occurrences, hold, langs);
 }
 
 /** A person's transition times: their picked minutes plus every `repeat.every` during the last
@@ -429,7 +442,7 @@ export function isNight(from: string | undefined, to: string | undefined, now: D
 // everyone's, like everywhere else. Skipped when a regular reminder for the same event lands on
 // that device in the same minute, and during night hours (the caller checks). Not recorded in the
 // household feed: they're personal and frequent.
-async function runTransitionReminders(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, occurrences: Occurrence[], eligible: PushSubRow[]): Promise<void> {
+async function runTransitionReminders(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, occurrences: Occurrence[], eligible: PushSubRow[], langs: Langs): Promise<void> {
   if (!eligible.length) return;
   const [membersRes, keysRes] = await db.batch<unknown>([
     db.prepare('SELECT id, name, transitions, nudges FROM members WHERE transitions IS NOT NULL'),
@@ -443,6 +456,7 @@ async function runTransitionReminders(env: Env, db: KinwallDb, now: Date, tz: st
     const times = cfg.on ? transitionTimes(cfg.minutes, cfg.repeat) : [];
     const devices = eligible.filter((s) => s.api_key_id && ownerOfKey.get(s.api_key_id) === m.id);
     if (!times.length || !devices.length) continue;
+    const lang = langs.member(m.id); // their own devices
     // Their last few headlines (part indexes), so the next one is different: saved when one is sent.
     let seen: NudgeSeen[] = [];
     try { seen = m.nudges ? JSON.parse(m.nudges) : []; } catch { /* start over */ }
@@ -464,9 +478,9 @@ async function runTransitionReminders(env: Env, db: KinwallDb, now: Date, tz: st
       const regular = occ.effective.map((r) => minute(Date.parse(occ.start) - (r + occ.leadMinutes) * 60000));
       const left = Math.max(1, Math.round((target - now.getTime()) / 60000)); // the truth, even on a late tick
       const by = fmtTime(new Date(target).toISOString(), tz, h12), starts = fmtTime(occ.start, tz, h12);
-      const when = occ.prepAt ? (by === starts ? `Start prep by ${by}` : `Start prep by ${by} · starts ${starts}`) : lead ? `Leave by ${by} · starts ${starts}` : `Starts at ${starts}`;
+      const when = tr(lang, occ.prepAt ? (by === starts ? 'Start prep by {by}' : 'Start prep by {by} · starts {starts}') : lead ? 'Leave by {by} · starts {starts}' : 'Starts at {starts}', { by, starts });
       // Varied, kind and escalating (nudges.ts), unlike their last few; the body keeps the plain facts.
-      const headline = pickNudge({ kind: occ.prepAt ? 'prep' : lead ? 'leave' : 'start', title: occ.mealName ?? occ.title, minutes: left, at: by, seed: `${m.id}:${occ.eventId}:${occ.occurrenceKey.slice(0, 10)}`, ordinal: times.indexOf(due[due.length - 1]), name: m.name.split(' ')[0], category: occ.category, step: occ.step }, seen);
+      const headline = pickNudgeIn(lang, { kind: occ.prepAt ? 'prep' : lead ? 'leave' : 'start', title: occ.mealName ?? occ.title, minutes: left, at: by, seed: `${m.id}:${occ.eventId}:${occ.occurrenceKey.slice(0, 10)}`, ordinal: times.indexOf(due[due.length - 1]), name: m.name.split(' ')[0], category: occ.category, step: occ.step }, seen);
       const payload = {
         title: headline.line,
         body: [when, occ.location && `📍 ${occ.location.replace(/\s*\n\s*/g, ', ')}`].filter(Boolean).join('\n'),
@@ -497,7 +511,7 @@ async function runTransitionReminders(env: Env, db: KinwallDb, now: Date, tz: st
 const LIVE_GRACE_MS = 5 * 60000; // web/src/liveActivity.ts GRACE_MIN
 type LiveTokenRow = { id: string; device: string; kind: 'start' | 'update'; activity: string; token: string; ends_at: string | null; owner: string | null };
 
-async function runLiveActivities(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, occurrences: Occurrence[], hold: boolean): Promise<void> {
+async function runLiveActivities(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, occurrences: Occurrence[], hold: boolean, langs: Langs): Promise<void> {
   if (!apnsConfigured(env)) return;
   const [tokensRes, membersRes] = await db.batch<unknown>([
     db.prepare('SELECT t.id, t.device, t.kind, t.activity, t.token, t.ends_at, COALESCE(k.owner, g.owner) AS owner FROM live_activity_tokens t LEFT JOIN api_keys k ON k.id = t.api_key_id LEFT JOIN oauth_grants g ON g.id = t.oauth_grant_id'),
@@ -516,8 +530,9 @@ async function runLiveActivities(env: Env, db: KinwallDb, now: Date, tz: string,
   const members = membersRes.results as { id: string; name: string; transitions: string }[];
   const shown = (occ: Occurrence, m: { id: string; name: string }, target: number) => {
     const words = { kind: occ.prepAt ? 'prep' as const : 'leave' as const, title: occ.mealName ?? occ.title, at: fmtTime(new Date(target).toISOString(), tz, h12), seed: `${m.id}:${occ.eventId}:${occ.occurrenceKey.slice(0, 10)}`, name: m.name.split(' ')[0], category: occ.category, step: occ.step, live: true };
-    const headline = nudge({ ...words, minutes: Math.ceil((target - now.getTime()) / 60000) });
-    return { headline, content: { title: headline, detail: nudge({ ...words, minutes: 0 }), date: swiftDate(target), count: 0, done: false } };
+    const lang = langs.member(m.id); // their own devices
+    const headline = nudgeIn(lang, { ...words, minutes: Math.ceil((target - now.getTime()) / 60000) });
+    return { headline, content: { title: headline, detail: nudgeIn(lang, { ...words, minutes: 0 }), date: swiftDate(target), count: 0, done: false } };
   };
 
   // End the ones that are over (sent or not, the token is done).
@@ -554,7 +569,7 @@ async function runLiveActivities(env: Env, db: KinwallDb, now: Date, tz: string,
           attributes: { kind: occ.prepAt ? 'prep' : 'leave', name: occ.title, eventId: occ.eventId, activity, endsAt: swiftDate(ends) },
           'content-state': content,
           'stale-date': unixSeconds(target),
-          alert: { title: headline, body: occ.prepAt ? `Start prep by ${by}` : `Leave by ${by} · starts ${fmtTime(occ.start, tz, h12)}` },
+          alert: { title: headline, body: tr(langs.member(m.id), occ.prepAt ? 'Start prep by {by}' : 'Leave by {by} · starts {starts}', { by, starts: fmtTime(occ.start, tz, h12) }) },
         });
         if (res.ok || res.gone) await markSent(db, sentKey, now);
       }
@@ -563,7 +578,7 @@ async function runLiveActivities(env: Env, db: KinwallDb, now: Date, tz: string,
 }
 
 // Features turned off in Settings (chores, lists) are left out of the summary.
-async function runDailySummary(env: Env, db: KinwallDb, now: Date, tz: string, subs: PushSubRow[], windowStart: Date, features: Features): Promise<void> {
+async function runDailySummary(env: Env, db: KinwallDb, now: Date, tz: string, subs: PushSubRow[], windowStart: Date, features: Features, langs: Langs): Promise<void> {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
   // null = the household-wide copy for the in-app feed (everyone's events, no device filter).
   const targets: (PushSubRow | null)[] = subs.filter((s) => subPrefs(s).dailySummary && timeInWindow(subPrefs(s).summaryTime, tz, windowStart, now));
@@ -584,8 +599,9 @@ async function runDailySummary(env: Env, db: KinwallDb, now: Date, tz: string, s
       db.prepare(`SELECT title, priority, member_id FROM list_items WHERE done = 0 AND due_date = ? ORDER BY ${priorityRankSql()}, sort, created_at`).bind(today),
       db.prepare("SELECT slot, title FROM meals WHERE date = ? ORDER BY CASE slot WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'dinner' THEN 2 ELSE 3 END, planned_time, created_at").bind(today),
     ]);
+    const lang = sub ? subLang(langs, sub) : langs.family;
     const mark = (r: { title: string; priority: string }) => `${r.priority === 'urgent' ? '‼️ ' : r.priority === 'high' ? '⭐ ' : ''}${r.title}`;
-    const top3 = (titles: string[]) => titles.slice(0, 3).join(', ') + (titles.length > 3 ? ` +${titles.length - 3} more` : '');
+    const top3 = (titles: string[]) => titles.slice(0, 3).join(', ') + (titles.length > 3 ? ` ${tr(lang, '+{n} more', { n: titles.length - 3 })}` : '');
     const linked = new Map<string, string[]>();
     for (const r of features.lists ? linkedRes.results as unknown as { event_id: string; title: string; priority: string }[] : []) {
       linked.set(r.event_id, [...(linked.get(r.event_id) ?? []), mark(r)]);
@@ -624,21 +640,21 @@ async function runDailySummary(env: Env, db: KinwallDb, now: Date, tz: string, s
     }
     const chores = (choresRes.results as unknown as ChoreRow[]).filter((row) => dueOnDate(row, today, tz));
     const first = todaysTitles.slice(0, 2).join(', ') + (todaysTitles.length > 2 ? '…' : '');
-    const choreCount = features.chores ? ` · ${chores.length} chore${chores.length === 1 ? '' : 's'}` : '';
-    let body = `${eventCount} event${eventCount === 1 ? '' : 's'}${choreCount}${first ? ` — ${first}` : ''}`;
+    const choreCount = features.chores ? ` · ${trn(lang, chores.length, '{n} chore', '{n} chores')}` : '';
+    let body = `${trn(lang, eventCount, '{n} event', '{n} events')}${choreCount}${first ? ` — ${first}` : ''}`;
     const meals = mealsRes.results as { slot: string; title: string }[];
-    if (features.meals && meals.length) body += `\nMeals: ${top3(meals.map((m) => `${m.slot[0].toUpperCase()}${m.slot.slice(1)} · ${m.title}`))}`;
-    if (todo.length) body += `\nTo do for today's events:\n${todo.join('\n')}`;
+    if (features.meals && meals.length) body += `\n${tr(lang, 'Meals: {list}', { list: top3(meals.map((m) => `${tr(lang, `${m.slot[0].toUpperCase()}${m.slot.slice(1)}`)} · ${m.title}`)) })}`;
+    if (todo.length) body += `\n${tr(lang, "To do for today's events:")}\n${todo.join('\n')}`;
     // List items due today (any list), for this device's members like the chore nudge.
     const due = features.lists ? (dueRes.results as unknown as { title: string; priority: string; member_id: string | null }[]).filter((r) => memberMatch(deviceMemberIds, r.member_id ? [r.member_id] : [])) : [];
-    if (due.length) body += `\nDue today: ${top3(due.map(mark))}`;
-    if (sub) await sendToSub(env, db, sub, { title: 'Today', body, url: '/' });
-    else await recordNotification(db, { kind: 'summary', title: 'Today', body, url: '/', source: 'system', at: now });
+    if (due.length) body += `\n${tr(lang, 'Due today: {list}', { list: top3(due.map(mark)) })}`;
+    if (sub) await sendToSub(env, db, sub, { title: tr(lang, 'Today'), body, url: '/' });
+    else await recordNotification(db, { kind: 'summary', title: tr(lang, 'Today'), body, url: '/', source: 'system', at: now });
     await markSent(db, key, now);
   }
 }
 
-async function runChoreNudge(env: Env, db: KinwallDb, now: Date, tz: string, subs: PushSubRow[], windowStart: Date): Promise<void> {
+async function runChoreNudge(env: Env, db: KinwallDb, now: Date, tz: string, subs: PushSubRow[], windowStart: Date, langs: Langs): Promise<void> {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
   // null = the household-wide copy for the in-app feed.
   const targets: (PushSubRow | null)[] = subs.filter((s) => subPrefs(s).choreNudge && timeInWindow(subPrefs(s).choreNudgeTime, tz, windowStart, now));
@@ -660,9 +676,11 @@ async function runChoreNudge(env: Env, db: KinwallDb, now: Date, tz: string, sub
     const mine = dueToday.filter((c) => memberMatch(deviceMemberIds, c.member_id ? [c.member_id] : []));
     if (mine.length === 0) continue;
     const titles = mine.slice(0, 3).map((c) => c.title).join(', ');
-    const payload = { title: `${mine.length} chore${mine.length === 1 ? '' : 's'} left today`, body: titles, url: '/chores' };
+    const memberIds = [...new Set(mine.flatMap((c) => (c.member_id ? [c.member_id] : [])))];
+    const lang = sub ? subLang(langs, sub) : langs.members(memberIds);
+    const payload = { title: trn(lang, mine.length, '{n} chore left today', '{n} chores left today'), body: titles, url: '/chores' };
     if (sub) await sendToSub(env, db, sub, payload);
-    else await recordNotification(db, { kind: 'chore', ...payload, memberIds: [...new Set(mine.flatMap((c) => (c.member_id ? [c.member_id] : [])))], source: 'system', at: now });
+    else await recordNotification(db, { kind: 'chore', ...payload, memberIds, source: 'system', at: now });
     await markSent(db, key, now);
   }
 }
@@ -680,10 +698,12 @@ export function notifyListUpdate(env: Env, execCtx: WaitCtx | undefined, listId:
       const key = `list:${listId}:${bucket}`;
       if (await alreadySent(env.DB, key)) return;
       await markSent(env.DB, key, now);
-      const payload = { title: 'List updated', body: `${listName} has new items`, url: `/#/lists?list=${encodeURIComponent(listId)}`, tag: `list:${listId}` }; // tap opens that list
-      await recordNotification(env.DB, { kind: 'list', title: payload.title, body: payload.body, url: payload.url, source: 'system', at: now });
+      const langs = await loadLangs(env.DB);
+      const payload = perLang((lang) => ({ title: tr(lang, 'List updated'), body: tr(lang, '{list} has new items', { list: listName }), url: `/#/lists?list=${encodeURIComponent(listId)}`, tag: `list:${listId}` })); // tap opens that list
+      const feed = payload(langs.family);
+      await recordNotification(env.DB, { kind: 'list', title: feed.title, body: feed.body, url: feed.url, source: 'system', at: now });
       const { results } = await env.DB.prepare('SELECT * FROM push_subscriptions').all<PushSubRow>();
-      for (const sub of results.filter((s) => subPrefs(s).listUpdates)) await sendToSub(env, env.DB, sub, payload);
+      for (const sub of results.filter((s) => subPrefs(s).listUpdates)) await sendToSub(env, env.DB, sub, payload(subLang(langs, sub)));
     })(),
   );
 }
@@ -697,7 +717,7 @@ export function notifyListUpdate(env: Env, execCtx: WaitCtx | undefined, listId:
 //   drained do you feel? 🔋", generic text and no feed row (personal, like the battery heads-up).
 // Once per person per day (claimed in one statement). Answers are never in the text.
 // Sent during night hours too: it's the person's own chosen time (the family asked for that).
-async function runGoalFollowups(env: Env, db: KinwallDb, now: Date, tz: string, windowStart: Date): Promise<void> {
+async function runGoalFollowups(env: Env, db: KinwallDb, now: Date, tz: string, windowStart: Date, langs: Langs): Promise<void> {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now);
   const { results } = await db
     .prepare('SELECT m.id, m.temp_check, t.goal, t.goal_skipped, t.followup, t.drained FROM members m LEFT JOIN temp_checks t ON t.member_id = m.id AND t.date = ? WHERE m.temp_check IS NOT NULL')
@@ -715,9 +735,10 @@ async function runGoalFollowups(env: Env, db: KinwallDb, now: Date, tz: string, 
     const key = `goal:${m.id}:${today}`;
     const claimed = await db.prepare('INSERT INTO sent_notifications (key, sent_at) VALUES (?, ?) ON CONFLICT(key) DO NOTHING').bind(key, now.toISOString()).run();
     if (!claimed.meta.changes) continue;
+    const lang = langs.member(m.id);
     const payload = goal
-      ? { title: 'Did you finish your goal? 🎯', body: goal, url: `/#/journal/${m.id}`, tag: key }
-      : { title: 'How drained do you feel? 🔋', body: 'A quick check-in before bed.', url: `/#/journal/${m.id}`, tag: key };
+      ? { title: tr(lang, 'Did you finish your goal? 🎯'), body: goal, url: `/#/journal/${m.id}`, tag: key }
+      : { title: tr(lang, 'How drained do you feel? 🔋'), body: tr(lang, 'A quick check-in before bed.'), url: `/#/journal/${m.id}`, tag: key };
     if (goal) await recordNotification(db, { kind: 'goal', title: payload.title, body: payload.body, url: payload.url, memberIds: [m.id], source: 'system', at: now });
     const { results: subs } = await db.prepare('SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.owner = ?').bind(m.id).all<PushSubRow>();
     for (const sub of subs) await sendToSub(env, db, sub, payload);
@@ -730,7 +751,7 @@ async function runGoalFollowups(env: Env, db: KinwallDb, now: Date, tz: string, 
 // window closes at noon, held through night hours. Once per person per night (a hash key, like the
 // battery's). The text says nothing about the answers or the goal; not in the family feed.
 export const LAST_NIGHT_PUSH_AT = '07:00';
-async function runLastNightReminders(env: Env, db: KinwallDb, now: Date, tz: string): Promise<void> {
+async function runLastNightReminders(env: Env, db: KinwallDb, now: Date, tz: string, langs: Langs): Promise<void> {
   const clock = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
   if (clock < LAST_NIGHT_PUSH_AT || clock >= LAST_NIGHT_UNTIL) return;
   const today = todayInTz(tz, now);
@@ -748,7 +769,8 @@ async function runLastNightReminders(env: Env, db: KinwallDb, now: Date, tz: str
     if (!subs.length) continue;
     const key = `lastnight:${await sha256Hex(`${m.id}:${night}`)}`;
     if (!(await db.prepare('INSERT INTO sent_notifications (key, sent_at) VALUES (?, ?) ON CONFLICT(key) DO NOTHING').bind(key, now.toISOString()).run()).meta.changes) continue;
-    const payload = { title: "Last night's check-in is still open 🌙", body: 'Finish it or skip it.', url: `/#/journal/${m.id}`, tag: `lastnight:${m.id}` };
+    const lang = langs.member(m.id);
+    const payload = { title: tr(lang, "Last night's check-in is still open 🌙"), body: tr(lang, 'Finish it or skip it.'), url: `/#/journal/${m.id}`, tag: `lastnight:${m.id}` };
     for (const sub of subs) await sendToSub(env, db, sub, payload);
   }
 }
@@ -770,7 +792,7 @@ async function runLastNightReminders(env: Env, db: KinwallDb, now: Date, tz: str
 // go out during night hours too: a missed dose matters more than a quiet night (the family asked).
 const MED_GRACE_MS = 30 * 60_000;
 const NOTE_BEFORE_END_MS = 60 * 60_000;
-async function runMedicationReminders(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean): Promise<void> {
+async function runMedicationReminders(env: Env, db: KinwallDb, now: Date, tz: string, h12: boolean, langs: Langs): Promise<void> {
   const meds = await loadMedications(env);
   if (!meds.length) return;
   const today = todayInTz(tz, now);
@@ -816,29 +838,39 @@ async function runMedicationReminders(env: Env, db: KinwallDb, now: Date, tz: st
       }
     }
   }
-  const send = async (subs: PushSubRow[], title: string, generic: string, named: Medication[], url: string, tag: string) => {
-    for (const sub of subs) await sendToSub(env, db, sub, { title, body: subPrefs(sub).medicationNames ? named.map(medicineLabel).join(', ') : generic, url, tag });
+  // `title` and `generic` (the body without names) in each device's language.
+  const send = async (subs: PushSubRow[], text: (lang: Lang) => { title: string; generic: string }, named: Medication[], url: string, tag: string) => {
+    for (const sub of subs) {
+      const { title, generic } = text(subLang(langs, sub));
+      await sendToSub(env, db, sub, { title, body: subPrefs(sub).medicationNames ? named.map(medicineLabel).join(', ') : generic, url, tag });
+    }
   };
   for (const [memberId, d] of due) {
-    const title = `Time for ${byId.get(memberId)!.name}'s medicine`;
+    const name = byId.get(memberId)!.name;
+    const text = perLang((lang) => ({ title: tr(lang, "Time for {name}'s medicine", { name: owner(lang, name) }), generic: tr(lang, 'Tap to mark it taken.') }));
     const url = `/#/medications/${memberId}`;
-    if (d.feed) await recordNotification(db, { kind: 'medication', title, url, memberIds: [memberId], source: 'system', at: now }, env);
+    if (d.feed) await recordNotification(db, { kind: 'medication', title: text(langs.member(memberId)).title, url, memberIds: [memberId], source: 'system', at: now }, env);
     const { results: subs } = await db.prepare('SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.owner = ?').bind(memberId).all<PushSubRow>();
-    await send(subs, title, 'Tap to mark it taken.', d.meds, url, `med:${memberId}`);
+    await send(subs, text, d.meds, url, `med:${memberId}`);
   }
   for (const f of follow.values()) {
     const hm = formatTime(new Date(f.end), { h12: false, tz });
-    const title = medFollowup(byId.get(f.memberId)!.name, hm === '00:00' ? 'midnight' : formatTime(hm, { h12, hourOnly: hm.endsWith(':00') }), f.seed);
+    const text = perLang((lang) => ({ title: medFollowupIn(lang, byId.get(f.memberId)!.name, hm === '00:00' ? tr(lang, 'midnight') : formatTime(hm, { h12, hourOnly: hm.endsWith(':00') }), f.seed), generic: tr(lang, 'Tap to mark it taken.') }));
     const { results: subs } = await db.prepare('SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.owner = ?').bind(f.memberId).all<PushSubRow>();
-    await send(subs, title, 'Tap to mark it taken.', f.meds, `/#/medications/${f.memberId}`, `med:${f.memberId}`);
+    await send(subs, text, f.meds, `/#/medications/${f.memberId}`, `med:${f.memberId}`);
   }
   if (!late.size) return;
   const { results: parents } = await db.prepare("SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.scope = 'admin'").all<PushSubRow>();
   for (const l of late.values()) {
-    const title = `${byId.get(l.memberId)!.name}'s ${l.time === WAKE ? 'start-of-day' : formatTime(l.time, { h12 })}${MED_LATE}`;
+    const name = byId.get(l.memberId)!.name;
+    // The English ends in MED_LATE, the German in MED_LATE_DE: the feed hides both from kids (isMedLate).
+    const text = perLang((lang) => ({
+      title: tr(lang, "{name}'s {time} medicine hasn't been marked yet", { name: owner(lang, name), time: l.time === WAKE ? tr(lang, 'start-of-day') : formatTime(l.time, { h12 }) }),
+      generic: tr(lang, 'Tap to check.'),
+    }));
     const url = `/#/medications/${l.memberId}`;
-    await recordNotification(db, { kind: 'medication', title, url, memberIds: [l.memberId], source: 'system', at: now }, env);
-    await send(parents, title, 'Tap to check.', l.meds, url, `med-late:${l.memberId}`);
+    await recordNotification(db, { kind: 'medication', title: text(langs.family).title, url, memberIds: [l.memberId], source: 'system', at: now }, env);
+    await send(parents, text, l.meds, url, `med-late:${l.memberId}`);
   }
 }
 
@@ -849,7 +881,7 @@ async function runMedicationReminders(env: Env, db: KinwallDb, now: Date, tz: st
 // The text is from the calendar and chores only, never sleep or feelings; not in the family feed.
 export const BATTERY_PUSH_AT = '19:00';
 export const BATTERY_PUSH_UNTIL = '12:00'; // a push held by night hours still goes out the morning of the day
-async function runBatteryHeadsUp(env: Env, db: KinwallDb, now: Date, tz: string): Promise<void> {
+async function runBatteryHeadsUp(env: Env, db: KinwallDb, now: Date, tz: string, langs: Langs): Promise<void> {
   const clock = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
   const today = todayInTz(tz, now);
   const day = clock >= BATTERY_PUSH_AT ? addDays(today, 1) : clock < BATTERY_PUSH_UNTIL ? today : null;
@@ -862,9 +894,10 @@ async function runBatteryHeadsUp(env: Env, db: KinwallDb, now: Date, tz: string)
     if (!subs.length) continue;
     const key = `battery:${await sha256Hex(`${m.id}:${day}`)}`;
     if (!(await db.prepare('INSERT INTO sent_notifications (key, sent_at) VALUES (?, ?) ON CONFLICT(key) DO NOTHING').bind(key, now.toISOString()).run()).meta.changes) continue;
-    const warning = (await batteryFor(env, m.id, tz, now)).warnings.find((w) => w.date === day);
+    const lang = langs.member(m.id);
+    const warning = (await batteryFor(env, m.id, tz, now, lang)).warnings.find((w) => w.date === day);
     if (!warning) continue;
-    const payload = { title: `🔋 Heads-up for ${day === today ? 'today' : 'tomorrow'}`, body: warning.text, url: `/#/insights/${m.id}`, tag: `battery:${m.id}` };
+    const payload = { title: tr(lang, day === today ? '🔋 Heads-up for today' : '🔋 Heads-up for tomorrow'), body: warning.text, url: `/#/insights/${m.id}`, tag: `battery:${m.id}` };
     for (const sub of subs) await sendToSub(env, db, sub, payload);
   }
 }
@@ -874,7 +907,7 @@ async function runBatteryHeadsUp(env: Env, db: KinwallDb, now: Date, tz: string)
 // Once per book per due date per heads-up; returning it (or moving the date) stops it.
 export const LIBRARY_DUE_AT = '09:00';
 export const LIBRARY_DUE_DAYS = 2;
-async function runLibraryDue(env: Env, db: KinwallDb, now: Date, tz: string, windowStart: Date): Promise<void> {
+async function runLibraryDue(env: Env, db: KinwallDb, now: Date, tz: string, windowStart: Date, langs: Langs): Promise<void> {
   if (!timeInWindow(LIBRARY_DUE_AT, tz, windowStart, now)) return;
   const today = todayInTz(tz, now);
   const soon = addDays(today, LIBRARY_DUE_DAYS);
@@ -892,11 +925,15 @@ async function runLibraryDue(env: Env, db: KinwallDb, now: Date, tz: string, win
   for (const when of [today, soon]) {
     const books = fresh.filter((b) => b.due_on === when);
     if (!books.length) continue;
-    const title = `📚 ${books.length === 1 ? `${books[0].title} is` : `${books.length} borrowed books are`} due back ${when === today ? 'today' : `in ${LIBRARY_DUE_DAYS} days`}`;
-    const body = books.map((b) => `${books.length === 1 ? 'To' : `${b.title} to`} ${b.borrowed_from}`).join(', ');
-    const payload = { title, body, url: '/#/trackers/library', tag: `librarydue:${when}` };
-    await recordNotification(db, { kind: 'reminder', ...payload, source: 'system', at: now });
-    for (const sub of parents) await sendToSub(env, db, sub, payload);
+    const payload = perLang((lang) => {
+      const title = books.length === 1
+        ? tr(lang, when === today ? '📚 {title} is due back today' : '📚 {title} is due back in {days} days', { title: books[0].title, days: LIBRARY_DUE_DAYS })
+        : tr(lang, when === today ? '📚 {n} borrowed books are due back today' : '📚 {n} borrowed books are due back in {days} days', { n: books.length, days: LIBRARY_DUE_DAYS });
+      const body = books.map((b) => (books.length === 1 ? tr(lang, 'To {person}', { person: b.borrowed_from }) : tr(lang, '{title} to {person}', { title: b.title, person: b.borrowed_from }))).join(', ');
+      return { title, body, url: '/#/trackers/library', tag: `librarydue:${when}` };
+    });
+    await recordNotification(db, { kind: 'reminder', ...payload(langs.family), source: 'system', at: now });
+    for (const sub of parents) await sendToSub(env, db, sub, payload(subLang(langs, sub)));
   }
 }
 
@@ -925,6 +962,9 @@ export async function runNotifications(env: Env, now: Date, _execCtx?: WaitCtx):
   }
 
   const windowStart = await getTickWindowStart(env.DB, now);
+  // Who reads in which language (i18n.ts). Can't read them: everything in English, nothing skipped.
+  let langs: Langs;
+  try { langs = await loadLangs(env.DB); } catch (e) { console.error('languages skipped:', e instanceof Error ? e.name : 'error'); langs = langsFrom([], []); }
 
   // Each part runs on its own: one that throws (a bad row, a sealed value that won't open) is logged
   // by name, never its data, and the others still run. The window doesn't move past a failed
@@ -936,17 +976,17 @@ export async function runNotifications(env: Env, now: Date, _execCtx?: WaitCtx):
   // Hold reminders at night (on unless the family turned it off): transitions, Live Activities,
   // battery alerts and the morning check-in reminder wait; event and medicine reminders don't.
   const hold = prefs.get('nightHoldReminders') !== 'false' && isNight(prefs.get('quietFrom'), prefs.get('quietTo'), now, tz);
-  await part('event reminders', () => runEventReminders(env, env.DB, now, tz, h12, defaultReminders, subs, hold));
+  await part('event reminders', () => runEventReminders(env, env.DB, now, tz, h12, defaultReminders, subs, hold, langs));
   const features = await readFeatures(env.DB);
-  await part('daily summary', () => runDailySummary(env, env.DB, now, tz, subs, windowStart, features), true);
-  if (features.chores) await part('chore nudge', () => runChoreNudge(env, env.DB, now, tz, subs, windowStart), true); // Chores turned off: no nudge
-  if (features.trackersReading) await part('library due dates', () => runLibraryDue(env, env.DB, now, tz, windowStart), true);
+  await part('daily summary', () => runDailySummary(env, env.DB, now, tz, subs, windowStart, features, langs), true);
+  if (features.chores) await part('chore nudge', () => runChoreNudge(env, env.DB, now, tz, subs, windowStart, langs), true); // Chores turned off: no nudge
+  if (features.trackersReading) await part('library due dates', () => runLibraryDue(env, env.DB, now, tz, windowStart, langs), true);
   // Check-ins turned off: no evening goal check, battery heads-up or morning check-in reminder.
-  if (features.checkIns) await part('goal follow-ups', () => runGoalFollowups(env, env.DB, now, tz, windowStart), true);
-  if (features.checkIns && !hold) await part('battery heads-up', () => runBatteryHeadsUp(env, env.DB, now, tz)); // held at night
-  if (features.checkIns && !hold) await part('last night reminders', () => runLastNightReminders(env, env.DB, now, tz)); // held at night
+  if (features.checkIns) await part('goal follow-ups', () => runGoalFollowups(env, env.DB, now, tz, windowStart, langs), true);
+  if (features.checkIns && !hold) await part('battery heads-up', () => runBatteryHeadsUp(env, env.DB, now, tz, langs)); // held at night
+  if (features.checkIns && !hold) await part('last night reminders', () => runLastNightReminders(env, env.DB, now, tz, langs)); // held at night
   if (features.trackersHealth && (await env.DB.prepare("SELECT value FROM settings WHERE key = 'medications'").first<{ value: string }>())?.value === 'true') {
-    await part('medication reminders', () => runMedicationReminders(env, env.DB, now, tz, h12));
+    await part('medication reminders', () => runMedicationReminders(env, env.DB, now, tz, h12, langs));
   }
   await part('prune', () => pruneSentNotifications(env.DB, now));
   if (!retry) await setTickWindowEnd(env.DB, now);
@@ -955,13 +995,14 @@ export async function runNotifications(env: Env, now: Date, _execCtx?: WaitCtx):
 // Chore approval (routes/chores.ts), sent right away rather than on the tick: "Leo finished Make
 // bed. Approve?" to parent devices (push subscriptions on admin keys) and a parent's "Not yet" to
 // the kid's own devices (keys owned by that member). Once per dedupe `key`; the in-app feed gets
-// one row too.
+// one row too. `text` writes the title and body in a language: each device's, the kid's for their
+// feed row, the family's for a row for parents.
 export function notifyChoreApproval(
   env: Env,
   execCtx: WaitCtx | undefined,
   to: 'parents' | { owner: string },
   key: string,
-  n: { title: string; body: string; url: string; memberIds?: string[] },
+  n: { text: (lang: Lang) => { title: string; body: string }; url: string; memberIds?: string[] },
 ): void {
   waitUntil(
     execCtx,
@@ -970,12 +1011,14 @@ export function notifyChoreApproval(
       // Claimed in one statement, so two quick ticks can't both send.
       const claimed = await env.DB.prepare('INSERT INTO sent_notifications (key, sent_at) VALUES (?, ?) ON CONFLICT(key) DO NOTHING').bind(key, now.toISOString()).run();
       if (!claimed.meta.changes) return;
-      await recordNotification(env.DB, { kind: 'chore', ...n, source: 'system', at: now });
+      const langs = await loadLangs(env.DB);
+      const text = perLang(n.text);
+      await recordNotification(env.DB, { kind: 'chore', ...text(to === 'parents' ? langs.family : langs.member(to.owner)), url: n.url, memberIds: n.memberIds, source: 'system', at: now });
       const subs = to === 'parents'
         ? env.DB.prepare("SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.scope = 'admin'")
         : env.DB.prepare('SELECT s.* FROM push_subscriptions s JOIN api_keys k ON k.id = s.api_key_id WHERE k.owner = ?').bind(to.owner);
       const { results } = await subs.all<PushSubRow>();
-      for (const sub of results) await sendToSub(env, env.DB, sub, { title: n.title, body: n.body, url: n.url, tag: key });
+      for (const sub of results) await sendToSub(env, env.DB, sub, { ...text(subLang(langs, sub)), url: n.url, tag: key });
     })(),
   );
 }
