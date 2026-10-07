@@ -5,9 +5,9 @@
 // Who decides: the person whose device this is (their profile's language, saved on the server, so
 // it follows them to every device of theirs), else this device's own pick (Settings → Only on this
 // device, for wall screens and shared devices), else the browser's language, else English.
-import { setDefaultOptions } from 'date-fns'
-import { de as deDates } from 'date-fns/locale/de'
-import { enUS } from 'date-fns/locale/en-US'
+//
+// No packages here: the server's tests import web helpers that use t(), and the server doesn't
+// install the web's dependencies. date-fns follows the language through onLang (dateLocale.ts).
 import de from './locales/de.ts'
 
 export type Lang = 'en' | 'de'
@@ -17,7 +17,6 @@ export const LANGUAGES: { key: Lang; label: string }[] = [
   { key: 'de', label: 'Deutsch' },
 ]
 const DICTIONARIES: Record<Lang, Record<string, string> | null> = { en: null, de }
-const DATE_LOCALES = { en: enUS, de: deDates }
 
 const isLang = (v: unknown): v is Lang => LANGUAGES.some(l => l.key === v)
 
@@ -41,11 +40,18 @@ export function pickLang(member: string | null | undefined, device: string | nul
 
 export const lang = (): Lang => current
 
-/** Switches the language for everything rendered from now on: text, date-fns and the page's lang. */
+/** Switches the language for everything rendered from now on: text, onLang listeners and the page's lang. */
 export function setLang(next: Lang) {
   current = next
-  setDefaultOptions({ locale: DATE_LOCALES[next] })
+  for (const fn of listeners) fn(next)
   if (typeof document !== 'undefined') document.documentElement.lang = next
+}
+
+const listeners = new Set<(l: Lang) => void>()
+/** Runs `fn` now and on every setLang (dateLocale.ts keeps date-fns in step). */
+export function onLang(fn: (l: Lang) => void) {
+  listeners.add(fn)
+  fn(current)
 }
 
 // The last language shown, for the first paint before the family's members load (main.tsx).

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { format } from 'date-fns'
 import { browserLang, intlLocale, lang, pickLang, setLang, t, tc, tn } from '../src/i18n.ts'
 import de from '../src/locales/de.ts'
+import '../src/dateLocale.ts'
 
 test('pickLang: the member first, then this device, then the browser, then English', () => {
   assert.equal(pickLang('de', 'en', ['en-US']), 'de')
