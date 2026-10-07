@@ -2,6 +2,8 @@
 // online sources the family turned on in Settings -> Quotes & facts. Picked from the date and a
 // 30-minute slot, so every display in the house shows the same one at the same time.
 import type { FactCategory, OnlineTidbits, OnThisDayKind, TidbitSettings, TidbitSource, TipCategory } from './types.ts'
+import { t } from './i18n.ts'
+export type { TidbitSource }
 
 export const QUOTES: { text: string; by: string }[] = [
   { text: 'Not all those who wander are lost.', by: 'J.R.R. Tolkien' },
@@ -225,9 +227,9 @@ export const TIP_CATEGORY_LABELS: Record<TipCategory, string> = {
 export const SOURCE_TITLES: Record<TidbitSource, string> = { quotes: 'Quotes', facts: 'Fun facts', tips: 'Neurodivergent-friendly tips', onthisday: 'On this day', trivia: 'Trivia question' }
 
 /** Settings row summary: which sources are on. */
-export function tidbitSummary(t: TidbitSettings): string {
-  if (!t.sources.length) return 'Off: the Board has no quote card.'
-  return (Object.keys(SOURCE_TITLES) as TidbitSource[]).filter(s => t.sources.includes(s)).map(s => SOURCE_TITLES[s]).join(', ')
+export function tidbitSummary(card: TidbitSettings): string {
+  if (!card.sources.length) return t('Off: the Board has no quote card.')
+  return (Object.keys(SOURCE_TITLES) as TidbitSource[]).filter(s => card.sources.includes(s)).map(s => t(SOURCE_TITLES[s])).join(', ')
 }
 
 export const FACT_CATEGORY_LABELS: Record<FactCategory, string> = {
@@ -250,15 +252,15 @@ export type Tidbit =
 export function tidbitFor(date: Date, slot: number, settings: TidbitSettings, online: OnlineTidbits | null, card = 0): Tidbit | null {
   const facts = FACTS.filter(f => settings.factCategories.length === 0 || settings.factCategories.includes(f.category))
   const pools: Tidbit[][] = []
-  const tips = TIPS.filter(t => !settings.tipCategories?.length || settings.tipCategories.includes(t.category))
+  const tips = TIPS.filter(x => !settings.tipCategories?.length || settings.tipCategories.includes(x.category))
   for (const source of ['quotes', 'facts', 'tips', 'onthisday', 'trivia'] as const) {
     if (!settings.sources.includes(source)) continue
     const pool: Tidbit[] =
       source === 'quotes' ? QUOTES.map(q => ({ kind: 'quote', ...q }))
       : source === 'facts' ? facts.map(f => ({ kind: 'fact', text: f.text }))
-      : source === 'tips' ? tips.map(t => ({ kind: 'tip', text: t.text }))
+      : source === 'tips' ? tips.map(x => ({ kind: 'tip', text: x.text }))
       : source === 'onthisday' ? (online?.onThisDay ?? []).map(o => ({ kind: 'onthisday', type: o.kind, text: o.text, year: o.year }))
-      : (online?.trivia ?? []).map(t => ({ kind: 'trivia', ...t }))
+      : (online?.trivia ?? []).map(x => ({ kind: 'trivia', ...x }))
     if (pool.length) pools.push(pool)
   }
   // Nothing online yet (first load, or offline) but online sources are on: fall back to the built-in lists.
@@ -300,6 +302,7 @@ export function tidbitQuery(card: TidbitSettings): string | null {
 const SHORT_TITLES: Record<TidbitSource, string> = { quotes: 'Quotes', facts: 'Fun facts', tips: 'Tips', onthisday: 'On this day', trivia: 'Trivia' }
 /** A card's heading from what it shows: "Trivia", "Quotes & fun facts", "Quotes, fun facts & more". */
 export function tidbitCardTitle(card: TidbitSettings): string {
-  const names = (Object.keys(SHORT_TITLES) as TidbitSource[]).filter(s => card.sources.includes(s)).map((s, i) => i ? SHORT_TITLES[s].toLowerCase() : SHORT_TITLES[s])
-  return names.length <= 2 ? names.join(' & ') : `${names[0]}, ${names[1]} & more`
+  // Later names are lowercase in English ("Quotes & fun facts"); each language has its own entry for them.
+  const names = (Object.keys(SHORT_TITLES) as TidbitSource[]).filter(s => card.sources.includes(s)).map((s, i) => t(i ? SHORT_TITLES[s].toLowerCase() : SHORT_TITLES[s]))
+  return names.length <= 2 ? names.join(' & ') : t('{a}, {b} & more', { a: names[0], b: names[1] })
 }

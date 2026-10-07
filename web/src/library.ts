@@ -1,7 +1,9 @@
 // The family's library (Library.tsx): labels, and which scanned barcodes are books. Pure, so
 // web/test/library.test.ts covers it.
 import type { LibraryBook, LibraryFormat, ReadingData, TrackerEntry } from './types.ts'
+import { format } from 'date-fns'
 import { hoursMinutes, STATUS_EMOJI, STATUS_WORDS } from './reading.ts'
+import { intlLocale, t, tn } from './i18n.ts'
 
 /** A scanned barcode as an ISBN when it's a book's: an EAN-13 starting 978/979 (Bookland), or an
  * ISBN-10. Anything else (a cereal box's UPC) is null. */
@@ -11,7 +13,7 @@ export function isbnFromScan(code: string): string | null {
 
 /** "Warriors #1 · 2003 · 970L · 272 pages": what we know, in that order. */
 export const bookDetails = (b: Pick<LibraryBook, 'series' | 'seriesNumber' | 'year' | 'lexile' | 'pages'>) =>
-  [b.series ? `${b.series}${b.seriesNumber ? ` #${b.seriesNumber}` : ''}` : '', b.year ? String(b.year) : '', b.lexile !== null && b.lexile !== undefined ? `${b.lexile}L` : '', b.pages ? `${b.pages} pages` : '']
+  [b.series ? `${b.series}${b.seriesNumber ? ` #${b.seriesNumber}` : ''}` : '', b.year ? String(b.year) : '', b.lexile !== null && b.lexile !== undefined ? `${b.lexile}L` : '', b.pages ? tn(b.pages, '{n} page', '{n} pages') : '']
     .filter(Boolean).join(' · ')
 
 // Typical Lexile measures by grade (MetaMetrics' middle half of readers, rounded), for a rough band.
@@ -20,10 +22,10 @@ const GRADES: [string, number, number][] = [['1', 190, 530], ['2', 420, 650], ['
 export function readingLevel(lexile: number | null | undefined): string | null {
   if (lexile === null || lexile === undefined) return null
   const label = lexile < 0 ? `BR${-lexile}L` : `${lexile}L`
-  if (lexile < 190) return `${label} · early reader`
+  if (lexile < 190) return t('{level} · early reader', { level: label })
   const fit = GRADES.filter(([, lo, hi]) => lexile >= lo && lexile <= hi).map(([g]) => g)
-  if (!fit.length) return `${label} · high school and up`
-  return `${label} · about ${fit.length === 1 ? `grade ${fit[0]}` : `grades ${fit[0]}–${fit[fit.length - 1]}`}`
+  if (!fit.length) return t('{level} · high school and up', { level: label })
+  return fit.length === 1 ? t('{level} · about grade {grade}', { level: label, grade: fit[0] }) : t('{level} · about grades {from}–{to}', { level: label, from: fit[0], to: fit[fit.length - 1] })
 }
 
 /** "Warriors #2", or null. */
@@ -34,29 +36,27 @@ export function listenLabel(b: Pick<LibraryBook, 'format' | 'readers'>): string 
   if (b.format !== 'audiobook') return null
   const narrator = b.readers.find(r => r.narrator)?.narrator
   const minutes = b.readers.find(r => r.totalMinutes)?.totalMinutes
-  return ['🎧 Audiobook', narrator ? `read by ${narrator}` : '', minutes ? hoursMinutes(minutes) : ''].filter(Boolean).join(' · ')
+  return [`🎧 ${t('Audiobook')}`, narrator ? t('read by {name}', { name: narrator }) : '', minutes ? hoursMinutes(minutes) : ''].filter(Boolean).join(' · ')
 }
 
 /** "★ 4.2 · 210 ratings": Open Library readers', once enough have rated it to mean something. */
 export const ratingLabel = (b: Pick<LibraryBook, 'ratingsAverage' | 'ratingsCount'>) =>
-  b.ratingsAverage && b.ratingsCount && b.ratingsCount >= 5 ? `★ ${b.ratingsAverage.toFixed(1)} · ${b.ratingsCount.toLocaleString('en-US')} ratings` : null
+  b.ratingsAverage && b.ratingsCount && b.ratingsCount >= 5 ? `★ ${b.ratingsAverage.toLocaleString(intlLocale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} · ${tn(b.ratingsCount, '{n} rating', '{n} ratings')}` : null
 
 /** The book on Open Library: its work, else its ISBN; null when neither is known. */
 export const openLibraryUrl = (b: Pick<LibraryBook, 'workKey' | 'isbn'>) =>
   b.workKey ? `https://openlibrary.org${b.workKey}` : b.isbn ? `https://openlibrary.org/isbn/${b.isbn}` : null
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 /** "Sep 23", with the year when it isn't this one. */
 function day(key: string, today: string) {
-  const [y, m, d] = key.split('-').map(Number)
-  return `${MONTHS[m - 1]} ${d}${String(y) === today.slice(0, 4) ? '' : `, ${y}`}`
+  return format(new Date(`${key}T12:00:00`), key.slice(0, 4) === today.slice(0, 4) ? t('MMM d') : t('MMM d, yyyy'))
 }
 /** "Lent to Grandma since Sep 23" ("today"; the year when it isn't this one), or null when it's home. */
 export function lentLabel(b: Pick<LibraryBook, 'lentTo' | 'lentOn'>, today: string): string | null {
   if (!b.lentTo) return null
-  if (!b.lentOn) return `Lent to ${b.lentTo}`
-  if (b.lentOn === today) return `Lent to ${b.lentTo} today`
-  return `Lent to ${b.lentTo} since ${day(b.lentOn, today)}`
+  if (!b.lentOn) return t('Lent to {name}', { name: b.lentTo })
+  if (b.lentOn === today) return t('Lent to {name} today', { name: b.lentTo })
+  return t('Lent to {name} since {date}', { name: b.lentTo, date: day(b.lentOn, today) })
 }
 
 /** A day key `n` days after `key` (YYYY-MM-DD). */
@@ -73,10 +73,10 @@ export const isOverdue = (b: Pick<LibraryBook, 'borrowedFrom' | 'dueOn' | 'retur
  * "Returned Sep 18"; null for the family's own books (or no due date). */
 export function dueLabel(b: Pick<LibraryBook, 'borrowedFrom' | 'dueOn' | 'returnedOn'>, today: string): string | null {
   if (!b.borrowedFrom) return null
-  if (b.returnedOn) return `Returned ${b.returnedOn === today ? 'today' : day(b.returnedOn, today)}`
+  if (b.returnedOn) return b.returnedOn === today ? t('Returned today') : t('Returned {date}', { date: day(b.returnedOn, today) })
   if (!b.dueOn) return null
-  if (b.dueOn < today) return `Overdue since ${day(b.dueOn, today)}`
-  return `Due back ${b.dueOn === today ? 'today' : b.dueOn === addDayKeys(today, 1) ? 'tomorrow' : day(b.dueOn, today)}`
+  if (b.dueOn < today) return t('Overdue since {date}', { date: day(b.dueOn, today) })
+  return b.dueOn === today ? t('Due back today') : b.dueOn === addDayKeys(today, 1) ? t('Due back tomorrow') : t('Due back {date}', { date: day(b.dueOn, today) })
 }
 
 const sameTitle = (a: string | null | undefined, b: string) => (a ?? '').trim().toLowerCase() === b.trim().toLowerCase()
@@ -108,17 +108,16 @@ export function bookLean(id: string): { tilt: number; height: number } {
   return { tilt: lean === 0 ? -2.5 : lean === 1 ? 2 : lean === 2 ? -1 : 0, height: 88 + (h >>> 8) % 13 }
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 /** The library-card tag on a borrowed book still out: "Due Fri" this week, "Due Oct 13" later,
  * "Overdue", or "Borrowed" without a date; null for the family's own books and returned ones. */
 export function dueTag(b: Pick<LibraryBook, 'borrowedFrom' | 'dueOn' | 'returnedOn'>, today: string): string | null {
   if (!b.borrowedFrom || b.returnedOn) return null
-  if (!b.dueOn) return 'Borrowed'
-  if (b.dueOn < today) return 'Overdue'
-  if (b.dueOn === today) return 'Due today'
-  if (b.dueOn === addDayKeys(today, 1)) return 'Due tomorrow'
-  if (b.dueOn <= addDayKeys(today, 6)) return `Due ${WEEKDAYS[new Date(`${b.dueOn}T12:00:00Z`).getUTCDay()]}`
-  return `Due ${day(b.dueOn, today)}`
+  if (!b.dueOn) return t('Borrowed')
+  if (b.dueOn < today) return t('Overdue')
+  if (b.dueOn === today) return t('Due today')
+  if (b.dueOn === addDayKeys(today, 1)) return t('Due tomorrow')
+  if (b.dueOn <= addDayKeys(today, 6)) return t('Due {day}', { day: format(new Date(`${b.dueOn}T12:00:00`), 'EEE') })
+  return t('Due {date}', { date: day(b.dueOn, today) })
 }
 
 /** Only "want to read" so far: someone has it on their shelf, nobody has started it. */

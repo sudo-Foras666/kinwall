@@ -1,4 +1,5 @@
 import type { Lang } from './i18n.ts'
+import { t, tn } from './i18n.ts'
 import type { CalendarFilter } from './calendarFilter.ts'
 import type { BoardPreset } from './boardLayout.ts'
 import type { DeviceKind } from './wallScreen.ts'
@@ -365,8 +366,8 @@ export const REMINDER_OPTIONS: { value: string; label: string; minutes: number[]
 
 export function reminderLabel(minutes: number[] | null | undefined): string | null {
   if (!minutes || minutes.length === 0) return null
-  const one = (m: number) => m % 1440 === 0 ? `${m / 1440} day${m === 1440 ? '' : 's'}` : m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} min`
-  return [...new Set(minutes)].sort((a, b) => a - b).map(one).join(', ') + ' before'
+  const one = (m: number) => m % 1440 === 0 ? tn(m / 1440, '{n} day', '{n} days') : m % 60 === 0 ? tn(m / 60, '{n} hour', '{n} hours') : t('{n} min', { n: m })
+  return t('{times} before', { times: [...new Set(minutes)].sort((a, b) => a - b).map(one).join(', ') })
 }
 
 export interface Category {

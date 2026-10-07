@@ -2,6 +2,7 @@
 // Kept outside React so they outlive a closed sheet, the wall's idle reset and leaving cooking
 // mode, and in localStorage so a reload (an update) doesn't lose them. TimerHost (Timers.tsx)
 // ticks and rings them. The helpers are pure, so web/test/timers.test.ts covers them.
+import { t } from './i18n.ts'
 
 /** `left`: set while paused (ms to go); `endsAt` only counts while it's running. `seconds`: for
  * Reset. `title` and `detail`: what it's for ("Tuesday Tacos", "Step 3 · Simmer"). `key`: where it
@@ -16,9 +17,9 @@ export const clock = (ms: number) => {
 
 /** 10 -> "10 min", 90 -> "1 hr 30 min", 0.5 -> "30 sec". */
 export function durationLabel(minutes: number) {
-  if (minutes < 1) return `${Math.round(minutes * 60)} sec`
+  if (minutes < 1) return t('{n} sec', { n: Math.round(minutes * 60) })
   const h = Math.floor(minutes / 60), m = Math.round(minutes % 60)
-  return h ? `${h} hr${m ? ` ${m} min` : ''}` : `${m} min`
+  return h ? (m ? t('{h} hr {m} min', { h, m }) : t('{h} hr', { h })) : t('{m} min', { m })
 }
 
 /** Never more than its full time: `now` can trail a just-started timer by a tick. */

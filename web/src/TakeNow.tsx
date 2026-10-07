@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError, PUSH_SUB_ID_KEY } from './api.ts'
 import { useApp } from './AppContext.tsx'
 import { announce } from './a11y.tsx'
+import { t, tc } from './i18n.ts'
 import { askWhenTaken, cardLabel, cheerLine, doseTimeLabel, earlierInput, pickedTime } from './medications.ts'
 import { formatTime } from './timeFormat.ts'
 import { todayKeyInTz } from './date.ts'
@@ -40,12 +41,12 @@ export function useDueDoses() {
   }, [on, refreshTick, tick])
   useEffect(() => {
     if (!on) return
-    let t: ReturnType<typeof setTimeout>
-    const next = () => { t = setTimeout(() => { if (document.visibilityState !== 'hidden') setTick(x => x + 1); next() }, RECHECK_MS - Date.now() % RECHECK_MS) }
+    let timer: ReturnType<typeof setTimeout>
+    const next = () => { timer = setTimeout(() => { if (document.visibilityState !== 'hidden') setTick(x => x + 1); next() }, RECHECK_MS - Date.now() % RECHECK_MS) }
     const onVis = () => { if (document.visibilityState === 'visible') setTick(x => x + 1) }
     next()
     document.addEventListener('visibilitychange', onVis)
-    return () => { clearTimeout(t); document.removeEventListener('visibilitychange', onVis) }
+    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', onVis) }
   }, [on])
   const drop = (d: DueDose) => setDue(x => x && { ...x, doses: x.doses.filter(y => key(y) !== key(d)) })
   return { doses: on && due ? due.doses : [], drop }
@@ -64,12 +65,12 @@ export function MedicationLiveActivity() {
   const [names, setNames] = useState(false)
   const [namesTick, setNamesTick] = useState(0) // the app's own "Show medicine names" changed
   useEffect(() => {
-    const on = () => setNamesTick(t => t + 1)
+    const on = () => setNamesTick(x => x + 1)
     window.addEventListener(MED_NAMES_EVENT, on)
     return () => window.removeEventListener(MED_NAMES_EVENT, on)
   }, [])
   const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), RECHECK_MS); return () => clearInterval(t) }, [])
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), RECHECK_MS); return () => clearInterval(timer) }, [])
   useEffect(() => {
     let id: string | null = null
     try { id = localStorage.getItem(PUSH_SUB_ID_KEY) } catch { /* storage blocked: generic */ }
@@ -91,7 +92,7 @@ export default function TakeNow({ memberId, className = '' }: { memberId?: strin
   if (!doses.length) return null
   return (
     <section className={`board-card meds-now ${className}`} aria-labelledby="meds-now-title">
-      <h3 id="meds-now-title" className="snap-heading">💊 Take now</h3>
+      <h3 id="meds-now-title" className="snap-heading">💊 {t('Take now')}</h3>
       <DoseList doses={doses} drop={due.drop} />
     </section>
   )
@@ -104,8 +105,8 @@ export function TakeNowTile({ doses, drop }: Due) {
   const who = [...new Set(doses.map(d => d.memberId))].map(id => members.find(m => m.id === id)).filter(m => m !== undefined)
   return <>
     <button className="board-tile meds-now meds-now-tile" aria-haspopup="dialog" onClick={() => setOpen(true)}>
-      <span className="board-tile-label"><PillIcon width={16} height={16} />Take now</span>
-      <span className="board-tile-value">{doses.length} due</span>
+      <span className="board-tile-label"><PillIcon width={16} height={16} />{t('Take now')}</span>
+      <span className="board-tile-value">{t('{n} due', { n: doses.length })}</span>
       <span className="board-tile-people">
         {who.map(m => (
           <span key={m.id} className="board-tile-person">
@@ -114,7 +115,7 @@ export function TakeNowTile({ doses, drop }: Due) {
         ))}
       </span>
     </button>
-    {open && <Sheet title="💊 Take now" onClose={() => setOpen(false)}><DoseList doses={doses} drop={drop} /></Sheet>}
+    {open && <Sheet title={`💊 ${t('Take now')}`} onClose={() => setOpen(false)}><DoseList doses={doses} drop={drop} /></Sheet>}
   </>
 }
 
@@ -124,15 +125,15 @@ export function WhenTakenSheet({ dose, today, onPick, onClose }: { dose: { date:
   const [earlier, setEarlier] = useState<ReturnType<typeof earlierInput> | null>(null)
   const picked = earlier && pickedTime(earlier.value, dose.date)
   return (
-    <Sheet title="When did you take it?" variant="dialog" onClose={onClose}
-      actions={earlier && <button className="btn btn-primary" disabled={!picked} onClick={() => picked && onPick(picked)}>Save</button>}>
+    <Sheet title={t('When did you take it?')} variant="dialog" onClose={onClose}
+      actions={earlier && <button className="btn btn-primary" disabled={!picked} onClick={() => picked && onPick(picked)}>{t('Save')}</button>}>
       <div className="sheet-links">
-        <button type="button" className="sheet-link" onClick={() => onPick()}>Just now</button>
-        <button type="button" className="sheet-link" onClick={() => onPick(dose.dueAt)}>At {formatTime(new Date(dose.dueAt))}</button>
-        <button type="button" className="sheet-link" aria-expanded={!!earlier} onClick={() => setEarlier(earlierInput(dose.date, today, dose.dueAt, Date.now()))}>Earlier…</button>
+        <button type="button" className="sheet-link" onClick={() => onPick()}>{t('Just now')}</button>
+        <button type="button" className="sheet-link" onClick={() => onPick(dose.dueAt)}>{t('At {time}', { time: formatTime(new Date(dose.dueAt)) })}</button>
+        <button type="button" className="sheet-link" aria-expanded={!!earlier} onClick={() => setEarlier(earlierInput(dose.date, today, dose.dueAt, Date.now()))}>{t('Earlier…')}</button>
       </div>
       {earlier && <div className="field">
-        <label htmlFor="when-taken">Taken at</label>
+        <label htmlFor="when-taken">{t('Taken at')}</label>
         <input id="when-taken" type={earlier.type} min={earlier.min} max={earlier.max} value={earlier.value} onChange={e => setEarlier({ ...earlier, value: e.target.value })} />
       </div>}
     </Sheet>
@@ -145,22 +146,22 @@ function DoseList({ doses, drop }: Due) {
   const [asking, setAsking] = useState<DueDose | null>(null) // Taken, well after its time: when?
   const [cheer, setCheer] = useState<{ key: string; line: string } | null>(null) // the dose just marked Taken: a moment of cheer before it goes
   const mark = async (d: DueDose, action: 'taken' | 'skipped' | 'snooze', at?: string) => {
-    const who = members.find(m => m.id === d.memberId)?.name ?? 'Them'
+    const who = members.find(m => m.id === d.memberId)?.name ?? t('Them')
     setBusy(key(d))
     try {
       await api.markDose(d.medicationId, { date: d.date, time: d.time, action, ...(at ? { at } : {}) })
       if (action === 'taken') {
         // A small celebration, no points: points would give a reason to tap Taken without taking it.
         // Low-stimulation mode (per device): one calm line, and its CSS already hides the confetti.
-        const line = document.documentElement.hasAttribute('data-lowstim') ? `Nice job, ${who}.` : cheerLine(who, cheer?.line)
-        setCheer({ key: key(d), line }); announce(`${line} Taken ✓`)
+        const line = document.documentElement.hasAttribute('data-lowstim') ? t('Nice job, {name}.', { name: who }) : cheerLine(who, cheer?.line)
+        setCheer({ key: key(d), line }); announce(`${line} ${t('Taken ✓')}`)
         setTimeout(() => { setCheer(c => (c?.key === key(d) ? null : c)); drop(d) }, 1400)
         return
       }
       drop(d)
-      const said = action === 'skipped' ? `Skipped for now: ${who}` : `We'll remind you again in 10 minutes`
+      const said = action === 'skipped' ? t('Skipped for now: {name}', { name: who }) : t("We'll remind you again in 10 minutes")
       toast(said); announce(said)
-    } catch (e) { toast(e instanceof ApiError ? e.message : "Couldn't save that", true) }
+    } catch (e) { toast(e instanceof ApiError ? e.message : t("Couldn't save that"), true) }
     finally { setBusy(null) }
   }
 
@@ -173,13 +174,13 @@ function DoseList({ doses, drop }: Due) {
           <li key={key(d)} className="meds-now-item">
             {m && <Face m={m} className="board-avatar meds-now-avatar" aria-hidden="true" />}
             <p className="meds-now-what">
-              <strong>{m?.name ?? 'Someone'}</strong>
+              <strong>{m?.name ?? t('Someone')}</strong>
               <span>{label} · {doseTimeLabel(d)}</span>
             </p>
-            {cheer?.key === key(d) ? <p className="meds-now-cheer" role="status">{cheer.line} Taken ✓<Confetti /></p> : <div className="meds-now-actions" role="group" aria-label={`${m?.name ?? 'Someone'}: ${label}, ${doseTimeLabel(d)}`}>
-              <button className="btn btn-primary" disabled={busy === key(d)} onClick={() => (askWhenTaken(d.dueAt, Date.now()) ? setAsking(d) : mark(d, 'taken'))}>Taken</button>
-              <button className="btn btn-secondary" disabled={busy === key(d)} onClick={() => mark(d, 'skipped')}>Skip</button>
-              <button className="btn btn-secondary" disabled={busy === key(d)} onClick={() => mark(d, 'snooze')}>Snooze 10 min</button>
+            {cheer?.key === key(d) ? <p className="meds-now-cheer" role="status">{cheer.line} {t('Taken ✓')}<Confetti /></p> : <div className="meds-now-actions" role="group" aria-label={`${m?.name ?? t('Someone')}: ${label}, ${doseTimeLabel(d)}`}>
+              <button className="btn btn-primary" disabled={busy === key(d)} onClick={() => (askWhenTaken(d.dueAt, Date.now()) ? setAsking(d) : mark(d, 'taken'))}>{t('Taken')}</button>
+              <button className="btn btn-secondary" disabled={busy === key(d)} onClick={() => mark(d, 'skipped')}>{tc('dose', 'Skip')}</button>
+              <button className="btn btn-secondary" disabled={busy === key(d)} onClick={() => mark(d, 'snooze')}>{t('Snooze 10 min')}</button>
             </div>}
           </li>
         )

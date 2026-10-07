@@ -77,6 +77,13 @@ export function t(text: string, vars?: Record<string, string | number>): string 
   return fill(DICTIONARIES[current]?.[text] ?? text, vars)
 }
 
+/** Like t(), for a word that reads differently in another place: the dictionary key is
+ * "context|text" (e.g. tc('now-next', 'Next') → 'now-next|Next': 'Danach', where a button's
+ * 'Next' is 'Weiter'). English shows `text`. */
+export function tc(context: string, text: string, vars?: Record<string, string | number>): string {
+  return fill(DICTIONARIES[current]?.[`${context}|${text}`] ?? DICTIONARIES[current]?.[text] ?? text, vars)
+}
+
 /** One or many: `one` for 1, else `other`, with {n} (and any other vars) filled in. */
 export function tn(n: number, one: string, other: string, vars?: Record<string, string | number>): string {
   return t(n === 1 ? one : other, { n: n.toLocaleString(intlLocale()), ...vars })

@@ -4,6 +4,7 @@
 // Newscast goes when the family turns it off (Settings → Features).
 
 import { format } from 'date-fns'
+import { t, tn } from './i18n.ts'
 
 export type ViewMode = 'week' | 'day' | 'month' | 'schedule' | 'board' | 'newscast'
 export type ViewTab = 'board' | 'calendar' | 'schedule' | 'newscast'
@@ -12,11 +13,11 @@ export type CalendarView = 'day' | 'week' | 'month'
 export const VIEW_MODES: readonly ViewMode[] = ['board', 'day', 'week', 'month', 'schedule', 'newscast']
 export const VIEW_TABS: readonly ViewTab[] = ['board', 'calendar', 'schedule', 'newscast']
 /** The tabs this family has: Newscast only while it's on. */
-export const viewTabs = (newscast: boolean) => newscast ? VIEW_TABS : VIEW_TABS.filter(t => t !== 'newscast')
+export const viewTabs = (newscast: boolean) => newscast ? VIEW_TABS : VIEW_TABS.filter(tab => tab !== 'newscast')
 export const CALENDAR_VIEWS: readonly CalendarView[] = ['day', 'week', 'month']
 
 /** A phone's Week view shows 3 days, so it says so. */
-export const viewLabel = (v: ViewMode, isPhone: boolean) => v === 'week' ? (isPhone ? '3 Day' : 'Week') : v[0].toUpperCase() + v.slice(1)
+export const viewLabel = (v: ViewMode, isPhone: boolean) => v === 'week' ? (isPhone ? t('3 Day') : t('Week')) : t(v[0].toUpperCase() + v.slice(1))
 
 const HINTS: Record<ViewMode, string> = {
   board: 'Today and the week ahead',
@@ -27,7 +28,7 @@ const HINTS: Record<ViewMode, string> = {
   newscast: 'What the family did and shared',
 }
 
-export const viewHint = (v: ViewMode, isPhone: boolean) => v === 'week' && isPhone ? '3 days side by side, hour by hour' : HINTS[v]
+export const viewHint = (v: ViewMode, isPhone: boolean) => v === 'week' && isPhone ? t('3 days side by side, hour by hour') : t(HINTS[v])
 
 export const isCalendarView = (v: unknown): v is CalendarView => CALENDAR_VIEWS.includes(v as CalendarView)
 
@@ -45,7 +46,7 @@ export const dayOrigin = (from: ViewMode): CalendarView | null => from === 'week
 
 /** A Month day's accessible name: "Thursday, October 1: 4 events". */
 export const monthDayLabel = (d: Date, count: number) =>
-  `${format(d, 'EEEE, MMMM d')}: ${count === 0 ? 'no events' : `${count} event${count === 1 ? '' : 's'}`}`
+  `${format(d, t('EEEE, MMMM d'))}: ${count === 0 ? t('no events') : tn(count, '{n} event', '{n} events')}`
 
 const LAST_KEY = 'kinwall.calendarView'
 

@@ -1,5 +1,7 @@
 // The energy battery's meter helpers (Battery.tsx). Pure, so web/test/battery.test.ts covers them.
 // The numbers and reasons come from the server (server/src/battery.ts); these only word them.
+import { format } from 'date-fns'
+import { t } from './i18n.ts'
 import type { BatteryReason, Drained, TempCheckSettings } from './types.ts'
 
 /** "+60", "−30" (a real minus sign). */
@@ -18,15 +20,15 @@ export const DRAINED: { key: Drained; emoji: string; label: string }[] = [
 export const drainedOf = (k: string | null | undefined) => DRAINED.find(d => d.key === k)
 
 /** Calm words for a level: nothing scary for kids. Under 25 matches the server's heads-up. */
-export const levelWord = (level: number) => (level >= 75 ? 'Full' : level >= 50 ? 'Good' : level >= 25 ? 'Getting low' : 'Running low')
+export const levelWord = (level: number) => t(level >= 75 ? 'Full' : level >= 50 ? 'Good' : level >= 25 ? 'Getting low' : 'Running low')
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 /** "Today", "Tomorrow" (not when `short`, for the strip), or a short weekday. */
 export function dayLabel(date: string, today: string, short = false) {
-  if (date === today) return 'Today'
-  if (!short && Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`) === 86_400_000) return 'Tomorrow'
-  return WEEKDAYS[new Date(`${date}T12:00:00Z`).getUTCDay()]
+  if (date === today) return t('Today')
+  if (!short && isTomorrow(date, today)) return t('Tomorrow')
+  return format(new Date(`${date}T12:00:00`), 'EEE')
 }
+export const isTomorrow = (date: string, today: string) => Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`) === 86_400_000
 
 /** On for this person: their Temp check and its battery switch. */
-export const batteryOn = (t: Partial<Pick<TempCheckSettings, 'on' | 'battery'>> | undefined) => !!(t?.on && t.battery)
+export const batteryOn = (tc: Partial<Pick<TempCheckSettings, 'on' | 'battery'>> | undefined) => !!(tc?.on && tc.battery)

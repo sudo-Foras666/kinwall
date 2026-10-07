@@ -1,6 +1,7 @@
 // The grocery catalog (GET /api/lists/remembered): pure helpers for its search, filters, sort, groups and labels.
 import { itemKey } from './itemSuggest.ts'
 import { compareAisles, type AisleOrder, type BarcodeLookup, type List, type RememberedItem } from './types.ts'
+import { t } from './i18n.ts'
 
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' })
 
@@ -34,7 +35,7 @@ export function filterCatalog(items: RememberedItem[], query: string, store: str
   const key = q.length > 3 ? itemKey(q) : q
   const tag = only.tag?.toLowerCase(), dept = only.department?.toLowerCase()
   return items.filter(i => (!q || i.title.toLowerCase().includes(q) || i.key.includes(key)) && (!store || i.places.some(p => p.store === store))
-    && (!tag || i.tags.some(t => t.toLowerCase() === tag)) && (!dept || i.category?.toLowerCase() === dept))
+    && (!tag || i.tags.some(x => x.toLowerCase() === tag)) && (!dept || i.category?.toLowerCase() === dept))
 }
 
 export type CatalogSort = 'alpha' | 'bought' | 'department' | 'aisle' | 'recent'
@@ -67,15 +68,16 @@ export const activeCatalogFilters = (f: CatalogFilters) => [f.store, f.tag, f.de
  * default); empty when nothing is filtered. */
 export function catalogFilterSummary(f: CatalogFilters, view: { sort: CatalogSort; group: CatalogGroup }): string {
   if (!activeCatalogFilters(f)) return ''
-  const sort = view.sort === 'alpha' ? null : view.sort === 'aisle' && f.store ? `Aisle at ${f.store}` : CATALOG_SORT_LABELS[view.sort]
-  return [f.store, f.tag, f.department, sort, view.group === 'none' ? null : `By ${CATALOG_GROUP_LABELS[view.group].toLowerCase()}`].filter(Boolean).join(' · ')
+  const sort = view.sort === 'alpha' ? null : view.sort === 'aisle' && f.store ? t('Aisle at {store}', { store: f.store }) : t(CATALOG_SORT_LABELS[view.sort])
+  const group = view.group === 'none' ? null : view.group === 'department' ? t('By department') : t('By category')
+  return [f.store, f.tag, f.department, sort, group].filter(Boolean).join(' · ')
 }
 
 /** Sections for the list: one untitled section, or one per department / category (an item with
  * several categories is under each), A-Z with "No department" / "No category" last. Keeps the order. */
 export function groupCatalog(items: RememberedItem[], by: CatalogGroup): { name: string | null; items: RememberedItem[] }[] {
   if (by === 'none') return [{ name: null, items }]
-  const none = by === 'department' ? 'No department' : 'No category'
+  const none = by === 'department' ? t('No department') : t('No category')
   const names = counted(items.map(i => (by === 'department' ? (i.category ? [i.category] : []) : i.tags))).map(v => v.name)
   const has = (i: RememberedItem, n: string) => (by === 'department' ? [i.category ?? ''] : i.tags).some(v => v.toLowerCase() === n.toLowerCase())
   const loose = items.filter(i => !names.some(n => has(i, n)))
@@ -85,11 +87,11 @@ export function groupCatalog(items: RememberedItem[], by: CatalogGroup): { name:
 /** An item's categories as saved: trimmed, blanks dropped, each once ignoring case, a category the
  * family already has keeps its spelling (the server does the same). */
 export function tagsInput(tags: string[], family: string[]): string[] {
-  const known = new Map(family.map(t => [t.toLowerCase(), t] as const))
+  const known = new Map(family.map(x => [x.toLowerCase(), x] as const))
   const out = new Map<string, string>()
   for (const raw of tags) {
-    const t = raw.trim().replace(/\s+/g, ' ')
-    if (t && !out.has(t.toLowerCase())) out.set(t.toLowerCase(), known.get(t.toLowerCase()) ?? t)
+    const tag = raw.trim().replace(/\s+/g, ' ')
+    if (tag && !out.has(tag.toLowerCase())) out.set(tag.toLowerCase(), known.get(tag.toLowerCase()) ?? tag)
   }
   return [...out.values()]
 }
@@ -116,7 +118,7 @@ export function placesFor(item: RememberedItem, store: string | null) {
 
 /** "Bought 3 times" (adds to a shopping list; 0 = only in the catalog). */
 export function boughtLabel(uses: number): string {
-  return uses === 0 ? 'Not bought yet' : uses === 1 ? 'Bought once' : `Bought ${uses} times`
+  return uses === 0 ? t('Not bought yet') : uses === 1 ? t('Bought once') : t('Bought {n} times', { n: uses })
 }
 
 /** The edit sheet's store rows as the API's places: trimmed, blanks dropped, each store once (the last row wins). */

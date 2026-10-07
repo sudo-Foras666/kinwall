@@ -1,7 +1,7 @@
 import { addDays, startOfWeek } from 'date-fns'
 import { dateKey } from './date.ts'
 import type { MealSlot } from './meal-types.ts'
-import { intlLocale } from './i18n.ts'
+import { intlLocale, t, tn } from './i18n.ts'
 
 export const MEAL_SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
 export const SLOT_LABEL: Record<MealSlot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
@@ -22,8 +22,8 @@ export function swapCandidates<M extends { id: string; date: string; slot: MealS
 }
 /** Minutes after midnight a meal is at: its own time, else the family's usual time for its slot. */
 export const mealMinutes = (meal: { slot: MealSlot; plannedTime?: string | null }, mealTimes: Record<MealSlot, string>) => {
-  const t = meal.plannedTime ?? mealTimes[meal.slot]
-  return Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
+  const time = meal.plannedTime ?? mealTimes[meal.slot]
+  return Number(time.slice(0, 2)) * 60 + Number(time.slice(3))
 }
 /** A day's meals in the order they happen (a 3:30 snack before a 6:00 dinner); slot order breaks ties. */
 export function byMealTime<M extends { slot: MealSlot; plannedTime?: string | null }>(meals: M[], mealTimes: Record<MealSlot, string>): M[] {
@@ -33,7 +33,7 @@ export function moveMealDate(date: string, days: number) { return dateKey(addDay
 export function mealDayLabel(date: string, options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }) {
   return new Intl.DateTimeFormat(intlLocale(), options).format(new Date(`${date}T12:00:00`))
 }
-export const servingsLabel = (n: number) => `${n} serving${n === 1 ? '' : 's'}`
+export const servingsLabel = (n: number) => tn(n, '{n} serving', '{n} servings')
 // Kitchen fractions for what recipes print (0.5 -> ½, 1.25 -> 1¼); anything else as a plain number.
 const FRACTIONS: Record<string, string> = { '0.125': '⅛', '0.250': '¼', '0.333': '⅓', '0.375': '⅜', '0.500': '½', '0.625': '⅝', '0.667': '⅔', '0.750': '¾', '0.875': '⅞' }
 export function formatQuantity(quantity: number): string {
@@ -59,10 +59,10 @@ export function urlHost(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return '' }
 }
 type Times = { prepMinutes?: number | null; totalMinutes?: number | null } | null | undefined
-export const minutesLabel = (m: number) => m >= 60 ? `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`
+export const minutesLabel = (m: number) => m >= 60 ? (m % 60 ? t('{h} hr {m} min', { h: Math.floor(m / 60), m: m % 60 }) : t('{h} hr', { h: Math.floor(m / 60) })) : t('{m} min', { m })
 /** "35 min · 10 min prep", "35 min", "10 min prep", or '' when the recipe doesn't say. */
 export function recipeTime(r: Times): string {
-  return [r?.totalMinutes ? minutesLabel(r.totalMinutes) : '', r?.prepMinutes ? `${minutesLabel(r.prepMinutes)} prep` : ''].filter(Boolean).join(' · ')
+  return [r?.totalMinutes ? minutesLabel(r.totalMinutes) : '', r?.prepMinutes ? t('{time} prep', { time: minutesLabel(r.prepMinutes) }) : ''].filter(Boolean).join(' · ')
 }
 /** When to start so a recipe taking `total` minutes is ready at `plannedTime` (HH:MM), same day only. */
 export function startBy(plannedTime: string | null, total: number | null | undefined): string | null {

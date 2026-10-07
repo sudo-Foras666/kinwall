@@ -1,5 +1,6 @@
 // The household timezone picker (Settings → General, setup wizard): names, local times and offsets.
 import { formatTime } from './timeFormat.ts'
+import { intlLocale, lang } from './i18n.ts'
 
 export function timezoneList() {
   // Intl.supportedValuesOf('timeZone') doesn't include 'UTC' itself (the server's default
@@ -32,7 +33,7 @@ export const tzCity = (tz: string) => tz.slice(tz.lastIndexOf('/') + 1).replace(
 export function tzName(tz: string, now = new Date()): string {
   const city = tzCity(tz)
   try {
-    const generic = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longGeneric' }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value.replace(/ Time$/, '')
+    const generic = new Intl.DateTimeFormat(lang() === 'en' ? 'en-US' : intlLocale(), { timeZone: tz, timeZoneName: 'longGeneric' }).formatToParts(now).find(p => p.type === 'timeZoneName')?.value.replace(/ Time$/, '')
     return generic && !generic.startsWith('GMT') && generic !== city ? `${city} (${generic})` : city
   } catch { return city }
 }

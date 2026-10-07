@@ -1,5 +1,6 @@
 // Cooking mode's pure helpers (CookingMode.tsx): the steps to cook along with, the timers a step
 // has or mentions, the ingredients it uses, and where you left off.
+import { t } from './i18n.ts'
 import { itemKey } from './itemSuggest.ts'
 import type { RecipeStep } from './meal-types.ts'
 
@@ -13,7 +14,7 @@ export function cookingSteps(recipe: { steps?: RecipeStep[] | null; instructions
 }
 
 export interface Duration { label: string; seconds: number }
-const UNITS: Record<string, [string, number]> = { h: ['hr', 3600], m: ['min', 60], s: ['sec', 1] }
+const UNITS: Record<string, [string, number]> = { h: ['{n} hr', 3600], m: ['{n} min', 60], s: ['{n} sec', 1] }
 /** "10 minutes", "5-7 min", "1 hour", "30 seconds" as timers. A range times its low end, when
  * it's time to check. */
 export function findDurations(text: string): Duration[] {
@@ -21,7 +22,7 @@ export function findDurations(text: string): Duration[] {
   for (const m of text.matchAll(/(\d+(?:\.\d+)?)(?:\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?))?\s*-?\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b/gi)) {
     const [unit, size] = UNITS[m[3][0].toLowerCase()]
     const seconds = Math.round(Number(m[1]) * size)
-    const label = `${m[2] ? `${m[1]}–${m[2]}` : m[1]} ${unit}`
+    const label = t(unit, { n: m[2] ? `${m[1]}–${m[2]}` : m[1] })
     if (seconds > 0) found.set(label, { label, seconds })
   }
   return [...found.values()]
@@ -30,7 +31,7 @@ export function findDurations(text: string): Duration[] {
 /** The step's own timers (labeled with their name), or else the durations its text mentions. */
 export function stepTimers(step: RecipeStep): Duration[] {
   if (!step.timers?.length) return findDurations([step.text, ...step.bullets].join('\n'))
-  return step.timers.map(t => ({ label: `${t.name ? `${t.name} · ` : ''}${t.minutes} min`, seconds: Math.round(t.minutes * 60) }))
+  return step.timers.map(timer => ({ label: `${timer.name ? `${timer.name} · ` : ''}${t('{n} min', { n: timer.minutes })}`, seconds: Math.round(timer.minutes * 60) }))
 }
 
 const words = (s: string) => (s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).map(itemKey)

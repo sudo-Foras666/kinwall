@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { format } from 'date-fns'
-import { browserLang, intlLocale, lang, pickLang, setLang, t, tn } from '../src/i18n.ts'
+import { browserLang, intlLocale, lang, pickLang, setLang, t, tc, tn } from '../src/i18n.ts'
 import de from '../src/locales/de.ts'
 
 test('pickLang: the member first, then this device, then the browser, then English', () => {
@@ -69,4 +69,30 @@ test("de: every literal t('…') and tn() text in the app has a German entry", a
     for (const m of s.matchAll(/\btn\([^,]+,\s*(['"])((?:\\.|(?!\1).)*)\1,\s*(['"])((?:\\.|(?!\3).)*)\3/g)) for (const x of [m[2], m[4]]) if (!(unquote(x) in de)) missing.add(unquote(x))
   }
   assert.deepEqual([...missing], [], 'add these to src/locales/de/')
+})
+
+test('tc: a word with its own meaning in one place, English unchanged', () => {
+  setLang('en')
+  assert.equal(tc('now-next', 'Next'), 'Next')
+  setLang('de')
+  assert.equal(tc('now-next', 'Next'), 'Danach')
+  assert.equal(tc('nowhere', 'Settings'), 'Einstellungen', 'falls back to the plain entry')
+  setLang('en')
+})
+
+test('de: the area files never give the same English text two different translations', async () => {
+  const fs = await import('node:fs')
+  const path = await import('node:path')
+  const dir = path.join(import.meta.dirname, '..', 'src', 'locales', 'de')
+  const seen = new Map<string, [string, string]>()
+  const clashes: string[] = []
+  for (const f of fs.readdirSync(dir)) {
+    const dict = (await import(path.join(dir, f))).default as Record<string, string>
+    for (const [en, de] of Object.entries(dict)) {
+      const before = seen.get(en)
+      if (before && before[1] !== de) clashes.push(`"${en}": ${before[0]} „${before[1]}“ vs ${f} „${de}“ (use tc() for a different meaning)`)
+      else seen.set(en, [f, de])
+    }
+  }
+  assert.deepEqual(clashes, [])
 })

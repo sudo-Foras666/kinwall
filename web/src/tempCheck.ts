@@ -2,6 +2,7 @@
 // Board and the calendar. Pure, so web/test/tempCheck.test.ts covers it. Mirrors server/src/schemas.ts.
 import { format } from 'date-fns'
 import { dateKey } from './date.ts'
+import { t } from './i18n.ts'
 import type { Drained, GoalFollowup, Member, TempCheckAnswered, TempCheckSettings } from './types.ts'
 
 export const SLEEP = [
@@ -13,6 +14,8 @@ export const SLEEP = [
 ] as const
 export type Sleep = (typeof SLEEP)[number]['key']
 export const FEELINGS = ['great', 'good', 'fine', 'ok', 'bad', 'awful', 'tired', 'sore']
+/** A feeling to show: a built-in one in the current language, their own as they wrote it. */
+export const feelingLabel = (f: string) => (FEELINGS.includes(f.toLowerCase()) ? t(f.toLowerCase()) : f)
 export const GOAL_MAX = 140
 export const TEMP_CHECK_OFF: TempCheckSettings = { on: false, sleep: true, feelings: true, goal: true, showGoal: true, evening: false, eveningTime: '21:00', journal: true, battery: false }
 
@@ -60,7 +63,7 @@ export function lastNightDate(now: Date): string | null {
 }
 
 /** "Tue, Sep 29": the day last night's check-in belongs to. */
-export const lastNightTitle = (date: string) => format(new Date(`${date}T12:00:00`), 'EEE, MMM d')
+export const lastNightTitle = (date: string) => format(new Date(`${date}T12:00:00`), t('EEE, MMM d'))
 
 /** An evening question that day is still unanswered: the goal check (a goal set) or "How drained?". */
 export function eveningPending(s: TempCheckSettings, r: { goal: string | null; goalSkipped: boolean; followup: GoalFollowup | null; drained?: Drained | 'skip' | null }): boolean {

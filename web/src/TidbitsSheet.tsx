@@ -8,6 +8,7 @@ import { setDeviceAppearance, useDeviceAppearance } from './useTheme.ts'
 import { useApp } from './AppContext.tsx'
 import { FACT_CATEGORY_LABELS, MAX_TIDBIT_CARDS, SOURCE_TITLES, TIP_CATEGORY_LABELS, tidbitCardTitle, tidbitSummary } from './tidbits.ts'
 import type { FactCategory, OnThisDayKind, TidbitSettings, TidbitSource, TipCategory } from './types.ts'
+import { t } from './i18n.ts'
 
 // Open Trivia DB categories that suit a family wall (ids from opentdb.com/api_category.php).
 const TRIVIA_CATEGORIES: { id: number; label: string }[] = [
@@ -33,92 +34,92 @@ const SOURCES: { key: TidbitSource; sub: string }[] = [
 const FAMILY_INTRO = 'The Board’s quote card takes turns through what’s on here, changing every half hour. Every screen on the family’s choice shows the same one. Turn everything off to hide the card.'
 
 /** `title`, `intro`, `onRemove`: for one of a device's own cards (DeviceTidbitRows). */
-export default function TidbitsSheet({ value, onClose, onSave, title = 'Quotes & facts', intro = FAMILY_INTRO, onRemove }: {
-  value: TidbitSettings; onClose: () => void; onSave: (t: TidbitSettings) => Promise<void>; title?: string; intro?: string; onRemove?: () => void
+export default function TidbitsSheet({ value, onClose, onSave, title = t('Quotes & facts'), intro = t(FAMILY_INTRO), onRemove }: {
+  value: TidbitSettings; onClose: () => void; onSave: (next: TidbitSettings) => Promise<void>; title?: string; intro?: string; onRemove?: () => void
 }) {
-  const [t, setT] = useState(value)
+  const [cur, setT] = useState(value)
   const [busy, setBusy] = useState(false)
   const toggle = <K,>(list: K[], k: K) => (list.includes(k) ? list.filter(x => x !== k) : [...list, k])
-  const on = (s: TidbitSource) => t.sources.includes(s)
+  const on = (s: TidbitSource) => cur.sources.includes(s)
   const chip = (active: boolean, label: string, onClick: () => void) => (
     <button key={label} type="button" className={`chip ${active ? 'active' : ''}`} aria-pressed={active} onClick={onClick}>{label}</button>
   )
-  const valid = t.onThisDay.length > 0 && t.triviaCategories.length > 0 && t.triviaDifficulties.length > 0
+  const valid = cur.onThisDay.length > 0 && cur.triviaCategories.length > 0 && cur.triviaDifficulties.length > 0
   return (
     <Sheet title={title} onClose={onClose}
-      actions={<button className="btn btn-primary" disabled={!valid || busy} onClick={async () => { setBusy(true); try { await onSave(t) } finally { setBusy(false) } }}>Save</button>}>
+      actions={<button className="btn btn-primary" disabled={!valid || busy} onClick={async () => { setBusy(true); try { await onSave(cur) } finally { setBusy(false) } }}>{t('Save')}</button>}>
       <p className="settings-row-sub">{intro}</p>
       {SOURCES.map(s => (
         <div key={s.key} className="tidbit-source">
           <div className="toggle-row">
             <div>
-              <label id={`tidbit-${s.key}`}>{SOURCE_TITLES[s.key]}</label>
-              <div className="settings-row-sub">{s.sub}</div>
+              <label id={`tidbit-${s.key}`}>{t(SOURCE_TITLES[s.key])}</label>
+              <div className="settings-row-sub">{t(s.sub)}</div>
             </div>
             <button className={`switch ${on(s.key) ? 'on' : ''}`} role="switch" aria-checked={on(s.key)} aria-labelledby={`tidbit-${s.key}`}
               onClick={() => setT(x => ({ ...x, sources: toggle(x.sources, s.key) }))}><span className="knob" /></button>
           </div>
           {s.key === 'facts' && on('facts') && (
-            <div className="chip-row" role="group" aria-label="Fact categories">
-              {chip(t.factCategories.length === 0, '✨ All', () => setT(x => ({ ...x, factCategories: [] })))}
+            <div className="chip-row" role="group" aria-label={t('Fact categories')}>
+              {chip(cur.factCategories.length === 0, `✨ ${t('All')}`, () => setT(x => ({ ...x, factCategories: [] })))}
               {(Object.keys(FACT_CATEGORY_LABELS) as FactCategory[]).map(c =>
-                chip(t.factCategories.includes(c), FACT_CATEGORY_LABELS[c], () => setT(x => ({ ...x, factCategories: toggle(x.factCategories, c) }))))}
+                chip(cur.factCategories.includes(c), t(FACT_CATEGORY_LABELS[c]), () => setT(x => ({ ...x, factCategories: toggle(x.factCategories, c) }))))}
             </div>
           )}
           {s.key === 'tips' && on('tips') && (
-            <div className="chip-row" role="group" aria-label="Tip categories">
-              {chip(!t.tipCategories?.length, '✨ All', () => setT(x => ({ ...x, tipCategories: [] })))}
+            <div className="chip-row" role="group" aria-label={t('Tip categories')}>
+              {chip(!cur.tipCategories?.length, `✨ ${t('All')}`, () => setT(x => ({ ...x, tipCategories: [] })))}
               {(Object.keys(TIP_CATEGORY_LABELS) as TipCategory[]).map(c =>
-                chip(!!t.tipCategories?.includes(c), TIP_CATEGORY_LABELS[c], () => setT(x => ({ ...x, tipCategories: toggle(x.tipCategories ?? [], c) }))))}
+                chip(!!cur.tipCategories?.includes(c), t(TIP_CATEGORY_LABELS[c]), () => setT(x => ({ ...x, tipCategories: toggle(x.tipCategories ?? [], c) }))))}
             </div>
           )}
           {s.key === 'onthisday' && on('onthisday') && <>
-            <div className="chip-row" role="group" aria-label="On this day">
-              {ON_THIS_DAY.map(k => chip(t.onThisDay.includes(k.key), k.label, () => setT(x => ({ ...x, onThisDay: toggle(x.onThisDay, k.key) }))))}
+            <div className="chip-row" role="group" aria-label={t('On this day')}>
+              {ON_THIS_DAY.map(k => chip(cur.onThisDay.includes(k.key), t(k.label), () => setT(x => ({ ...x, onThisDay: toggle(x.onThisDay, k.key) }))))}
             </div>
-            {t.onThisDay.length === 0 && <p className="settings-row-sub">Pick at least one.</p>}
-            {t.onThisDay.includes('births') && (
+            {cur.onThisDay.length === 0 && <p className="settings-row-sub">{t('Pick at least one.')}</p>}
+            {cur.onThisDay.includes('births') && (
               <div className="settings-row">
-                <label className="settings-row-label" htmlFor="births-after">Birthdays of people born</label>
-                <select id="births-after" className="settings-select" value={t.birthsAfter ?? ''}
+                <label className="settings-row-label" htmlFor="births-after">{t('Birthdays of people born')}</label>
+                <select id="births-after" className="settings-select" value={cur.birthsAfter ?? ''}
                   onChange={e => { const v = e.target.value; setT(x => ({ ...x, birthsAfter: v === '' ? null : Number(v) })) }}>
-                  {[1800, 1900, 1950, 1970, 1990].map(y => <option key={y} value={y}>Since {y}</option>)}
-                  <option value="">Any time</option>
+                  {[1800, 1900, 1950, 1970, 1990].map(y => <option key={y} value={y}>{t('Since {date}', { date: y })}</option>)}
+                  <option value="">{t('Any time')}</option>
                 </select>
               </div>
             )}
-            {t.onThisDay.includes('events') && <p className="settings-row-sub">History leaves out wars, disasters and crimes, but it’s the least kid-proof of the three.</p>}
+            {cur.onThisDay.includes('events') && <p className="settings-row-sub">{t('History leaves out wars, disasters and crimes, but it’s the least kid-proof of the three.')}</p>}
           </>}
           {s.key === 'trivia' && on('trivia') && <>
-            <div className="chip-row" role="group" aria-label="Trivia categories">
-              {TRIVIA_CATEGORIES.map(c => chip(t.triviaCategories.includes(c.id), c.label, () => setT(x => ({ ...x, triviaCategories: toggle(x.triviaCategories, c.id) }))))}
+            <div className="chip-row" role="group" aria-label={t('Trivia categories')}>
+              {TRIVIA_CATEGORIES.map(c => chip(cur.triviaCategories.includes(c.id), t(c.label), () => setT(x => ({ ...x, triviaCategories: toggle(x.triviaCategories, c.id) }))))}
             </div>
-            {t.triviaCategories.length === 0 && <p className="settings-row-sub">Pick at least one. One category is used each day, taking turns.</p>}
-            <div className="chip-row" role="group" aria-label="Difficulty">
-              {DIFFICULTIES.map(d => chip(t.triviaDifficulties.includes(d.key), d.label, () => setT(x => ({ ...x, triviaDifficulties: toggle(x.triviaDifficulties, d.key) }))))}
+            {cur.triviaCategories.length === 0 && <p className="settings-row-sub">{t('Pick at least one. One category is used each day, taking turns.')}</p>}
+            <div className="chip-row" role="group" aria-label={t('Difficulty')}>
+              {DIFFICULTIES.map(d => chip(cur.triviaDifficulties.includes(d.key), t(d.label), () => setT(x => ({ ...x, triviaDifficulties: toggle(x.triviaDifficulties, d.key) }))))}
             </div>
-            {t.triviaDifficulties.length === 0 && <p className="settings-row-sub">Pick at least one difficulty.</p>}
+            {cur.triviaDifficulties.length === 0 && <p className="settings-row-sub">{t('Pick at least one difficulty.')}</p>}
           </>}
         </div>
       ))}
       {(on('onthisday') || on('trivia')) && (
-        <p className="settings-row-sub">Your Kinwall server fetches these once a day. Nothing about your family is sent, and screens never contact Wikipedia or Open Trivia DB themselves. When they can’t be reached, the built-in quotes and facts fill in.</p>
+        <p className="settings-row-sub">{t('Your Kinwall server fetches these once a day. Nothing about your family is sent, and screens never contact Wikipedia or Open Trivia DB themselves. When they can’t be reached, the built-in quotes and facts fill in.')}</p>
       )}
-      {onRemove && <button className="btn btn-secondary tidbit-remove" onClick={onRemove}>Remove this card</button>}
+      {onRemove && <button className="btn btn-secondary tidbit-remove" onClick={onRemove}>{t('Remove this card')}</button>}
     </Sheet>
   )
 }
 
 /** "Trivia: 🐾 Animals, 🔬 Science & nature · 🙂 Easy", one line per source that's on. */
 function cardDetail(c: TidbitSettings): string {
-  const labels = <K,>(all: { key: K; label: string }[], picked: K[]) => all.filter(x => picked.includes(x.key)).map(x => x.label).join(', ')
+  const labels = <K,>(all: { key: K; label: string }[], picked: K[]) => all.filter(x => picked.includes(x.key)).map(x => t(x.label)).join(', ')
   const parts = c.sources.map(s =>
-    s === 'facts' ? `${SOURCE_TITLES.facts}: ${c.factCategories.length ? c.factCategories.map(k => FACT_CATEGORY_LABELS[k]).join(', ') : 'all'}`
-    : s === 'tips' ? `Tips: ${c.tipCategories?.length ? c.tipCategories.map(k => TIP_CATEGORY_LABELS[k]).join(', ') : 'all'}`
-    : s === 'onthisday' ? `${SOURCE_TITLES.onthisday}: ${labels(ON_THIS_DAY, c.onThisDay)}`
-    : s === 'trivia' ? `Trivia: ${labels(TRIVIA_CATEGORIES.map(t => ({ key: t.id, label: t.label })), c.triviaCategories)} · ${labels(DIFFICULTIES, c.triviaDifficulties)}`
-    : SOURCE_TITLES[s])
-  return parts.length ? parts.join('. ') : 'Off: this card is hidden.'
+    s === 'facts' ? `${t(SOURCE_TITLES.facts)}: ${c.factCategories.length ? c.factCategories.map(k => t(FACT_CATEGORY_LABELS[k])).join(', ') : t('all')}`
+    : s === 'tips' ? `${t('Tips')}: ${c.tipCategories?.length ? c.tipCategories.map(k => t(TIP_CATEGORY_LABELS[k])).join(', ') : t('all')}`
+    : s === 'onthisday' ? `${t(SOURCE_TITLES.onthisday)}: ${labels(ON_THIS_DAY, c.onThisDay)}`
+    : s === 'trivia' ? `${t('Trivia')}: ${labels(TRIVIA_CATEGORIES.map(x => ({ key: x.id, label: x.label })), c.triviaCategories)} · ${labels(DIFFICULTIES, c.triviaDifficulties)}`
+    : t(SOURCE_TITLES[s]))
+  return parts.length ? parts.join('. ') : t('Off: this card is hidden.')
 }
 
 /** Settings → This display: the Board's quote / fact cards on this device. The family's choice
@@ -129,42 +130,42 @@ export function DeviceTidbitRows() {
   const cards = device.tidbitCards ?? []
   const [editing, setEditing] = useState<number | null>(null)
   const save = (next: TidbitSettings[] | undefined) => setDeviceAppearance({ ...device, tidbitCards: next?.length ? next : undefined })
-  const name = (c: TidbitSettings) => c.sources.length ? tidbitCardTitle(c) : 'Nothing on'
+  const name = (c: TidbitSettings) => c.sources.length ? tidbitCardTitle(c) : t('Nothing on')
   return (
     <div className="settings-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
       <div className="device-pref-row">
-        <span>Board quotes &amp; facts</span>
-        <select className="settings-select" aria-label="Board quotes and facts" value={cards.length ? 'own' : ''}
+        <span>{t('Board quotes & facts')}</span>
+        <select className="settings-select" aria-label={t('Board quotes and facts')} value={cards.length ? 'own' : ''}
           onChange={e => {
-            if (e.target.value) { save([{ ...settings.tidbits }]); announce('This device picks its own quotes and facts') }
-            else { save(undefined); announce("This device follows the family's quotes and facts") }
+            if (e.target.value) { save([{ ...settings.tidbits }]); announce(t('This device picks its own quotes and facts')) }
+            else { save(undefined); announce(t("This device follows the family's quotes and facts")) }
           }}>
-          <option value="">Family’s choice</option>
-          <option value="own">Own picks</option>
+          <option value="">{t('Family’s choice')}</option>
+          <option value="own">{t('Own picks')}</option>
         </select>
       </div>
-      {!cards.length ? <div className="settings-row-sub">This screen shows the family’s quote card ({tidbitSummary(settings.tidbits)}).</div> : <>
-        <div className="settings-row-sub">Up to {MAX_TIDBIT_CARDS} cards, each taking turns through its own picks. A phone, or a tablet on its side, shows the first one.</div>
+      {!cards.length ? <div className="settings-row-sub">{t('This screen shows the family’s quote card ({sources}).', { sources: tidbitSummary(settings.tidbits) })}</div> : <>
+        <div className="settings-row-sub">{t('Up to {n} cards, each taking turns through its own picks. A phone, or a tablet on its side, shows the first one.', { n: MAX_TIDBIT_CARDS })}</div>
         {cards.map((c, i) => (
           <div key={i} className="tidbit-card-row">
             <span>
               <span className="settings-row-label">{i + 1}. {name(c)}</span>
               <span className="settings-row-sub">{cardDetail(c)}</span>
             </span>
-            <button className="btn btn-secondary tidbit-card-edit" aria-haspopup="dialog" aria-label={`Change card ${i + 1}, ${name(c)}`} onClick={() => setEditing(i)}>Change</button>
+            <button className="btn btn-secondary tidbit-card-edit" aria-haspopup="dialog" aria-label={t('Change card {n}, {name}', { n: i + 1, name: name(c) })} onClick={() => setEditing(i)}>{t('Change')}</button>
           </div>
         ))}
         {cards.length < MAX_TIDBIT_CARDS && (
           <button className="btn btn-secondary tidbit-card-add" aria-haspopup="dialog"
-            onClick={() => { save([...cards, { ...settings.tidbits, sources: ['trivia'] }]); setEditing(cards.length) }}>Add a card</button>
+            onClick={() => { save([...cards, { ...settings.tidbits, sources: ['trivia'] }]); setEditing(cards.length) }}>{t('Add a card')}</button>
         )}
       </>}
       {editing !== null && cards[editing] && (
-        <TidbitsSheet value={{ ...settings.tidbits, ...cards[editing] }} title={`Card ${editing + 1} on this device`}
-          intro="This card takes turns through what’s on here. Only this screen changes. Turn everything off to hide the card."
+        <TidbitsSheet value={{ ...settings.tidbits, ...cards[editing] }} title={t('Card {n} on this device', { n: editing + 1 })}
+          intro={t('This card takes turns through what’s on here. Only this screen changes. Turn everything off to hide the card.')}
           onClose={() => setEditing(null)}
-          onSave={async t => { save(cards.map((c, i) => i === editing ? t : c)); setEditing(null); announce(`Saved: ${name(t)}`) }}
-          onRemove={cards.length > 1 ? () => { save(cards.filter((_, i) => i !== editing)); setEditing(null); announce('Card removed') } : undefined} />
+          onSave={async next => { save(cards.map((c, i) => i === editing ? next : c)); setEditing(null); announce(t('Saved: {name}', { name: name(next) })) }}
+          onRemove={cards.length > 1 ? () => { save(cards.filter((_, i) => i !== editing)); setEditing(null); announce(t('Card removed')) } : undefined} />
       )}
     </div>
   )

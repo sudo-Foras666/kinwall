@@ -9,7 +9,8 @@ import { useEffect, useRef, useState } from 'react'
 import { api } from './api.ts'
 import { announce, reducedMotion } from './a11y.tsx'
 import { Face } from './Face'
-import { bookLean, clothColor, dueTag, isAudio, listening, pickBook } from './library.ts'
+import { bookLean, clothColor, dueTag, isAudio, isOverdue, listening, pickBook } from './library.ts'
+import { t } from './i18n.ts'
 import type { LibraryBook, Member } from './types.ts'
 
 const SCAN_STEPS = 12
@@ -34,7 +35,7 @@ export default function LibraryShelf({ books, members, today, onOpen }: {
     timers.current.forEach(clearTimeout); timers.current = []
     setPicked(null)
     const land = () => {
-      setLit(null); setPicked(chosen.id); announce(`Picked: ${chosen.title}`)
+      setLit(null); setPicked(chosen.id); announce(t('Picked: {title}', { title: chosen.title }))
       document.getElementById(`lib-shelf-${chosen.id}`)?.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' })
       later(() => { setPicked(null); onOpen(chosen) }, LAND_MS)
     }
@@ -47,25 +48,25 @@ export default function LibraryShelf({ books, members, today, onOpen }: {
   const record = (b: LibraryBook) => <CrateRecord key={b.id} b={b} members={members} today={today} lit={lit === b.id} picked={picked === b.id} onOpen={onOpen} />
   const can = (list: LibraryBook[]) => list.some(b => !b.wanted && !b.returnedOn)
   const pickBtn = (from: LibraryBook[], name: string) =>
-    <button type="button" className="btn btn-secondary lib-pick-btn" aria-label={name} title={name} onClick={() => pick(from)} disabled={!!lit}>🎲 Pick one</button>
+    <button type="button" className="btn btn-secondary lib-pick-btn" aria-label={name} title={name} onClick={() => pick(from)} disabled={!!lit}>🎲 {t('Pick one')}</button>
   return (
     <div className="lib-shelves">
       {!!paper.length && (
         <section className="lib-case" aria-labelledby="lib-shelf-title">
           <div className="lib-sec-head">
-            <h3 id="lib-shelf-title" className="lib-sec-title">📚 Books</h3>
-            {can(paper) && pickBtn(paper, 'Pick one book for me')}
+            <h3 id="lib-shelf-title" className="lib-sec-title">📚 {t('Books')}</h3>
+            {can(paper) && pickBtn(paper, t('Pick one book for me'))}
           </div>
-          <ul className="lib-shelf" aria-label="Books">{paper.map(book)}</ul>
+          <ul className="lib-shelf" aria-label={t('Books')}>{paper.map(book)}</ul>
         </section>
       )}
       {!!audio.length && (
         <section className="lib-crate" aria-labelledby="lib-crate-title">
           <div className="lib-sec-head">
-            <h3 id="lib-crate-title" className="lib-sec-title">🎧 Audiobooks</h3>
-            {can(audio) && pickBtn(audio, 'Pick one audiobook for me')}
+            <h3 id="lib-crate-title" className="lib-sec-title">🎧 {t('Audiobooks')}</h3>
+            {can(audio) && pickBtn(audio, t('Pick one audiobook for me'))}
           </div>
-          <ul className="lib-crate-rows" aria-label="Audiobooks">{audio.map(record)}</ul>
+          <ul className="lib-crate-rows" aria-label={t('Audiobooks')}>{audio.map(record)}</ul>
         </section>
       )}
     </div>
@@ -82,9 +83,9 @@ function ShelfBook({ b, members, today, lit, picked, onOpen }: {
   const readers = [...new Set(b.readers.filter(r => r.status === 'reading').map(r => r.memberId))]
     .map(id => members.find(m => m.id === id)).filter((m): m is Member => !!m).slice(0, 2)
   const name = [
-    `${b.title}${b.author ? ` by ${b.author}` : ''}`,
-    due, b.wanted ? 'on the wishlist' : null,
-    readers.length ? `${readers.map(m => m.name).join(' and ')} ${readers.length > 1 ? 'are' : 'is'} reading it` : null,
+    b.author ? t('{title} by {author}', { title: b.title, author: b.author }) : b.title,
+    due, b.wanted ? t('on the wishlist') : null,
+    readers.length > 1 ? t('{name} and {other} are reading it', { name: readers[0].name, other: readers[1].name }) : readers.length ? t('{name} is reading it', { name: readers[0].name }) : null,
   ].filter(Boolean).join(', ')
   return (
     <li id={`lib-shelf-${b.id}`} className="lib-slot">
@@ -104,7 +105,7 @@ function ShelfBook({ b, members, today, lit, picked, onOpen }: {
           </span>
         )}
         {b.wanted && <span className="lib-ribbon" aria-hidden="true">⭐</span>}
-        {due && <span className={`lib-card-tag ${due === 'Overdue' ? 'lib-overdue' : ''}`} aria-hidden="true">{due}</span>}
+        {due && <span className={`lib-card-tag ${isOverdue(b, today) ? 'lib-overdue' : ''}`} aria-hidden="true">{due}</span>}
       </button>
     </li>
   )
@@ -123,9 +124,9 @@ function CrateRecord({ b, members, today, lit, picked, onOpen }: {
   const now = listening(b)
   const who = now && members.find(m => m.id === now.memberId)
   const name = [
-    `${b.title}${b.author ? ` by ${b.author}` : ''}, audiobook`,
-    due, b.wanted ? 'on the wishlist' : null,
-    now ? `${who?.name ?? 'Someone'} is listening${now.progress !== null ? `, ${Math.round(now.progress * 100)}% in` : ''}` : null,
+    b.author ? t('{title} by {author}, audiobook', { title: b.title, author: b.author }) : t('{title}, audiobook', { title: b.title }),
+    due, b.wanted ? t('on the wishlist') : null,
+    now ? (now.progress !== null ? t('{name} is listening, {percent}% in', { name: who?.name ?? t('Someone'), percent: Math.round(now.progress * 100) }) : t('{name} is listening', { name: who?.name ?? t('Someone') })) : null,
   ].filter(Boolean).join(', ')
   return (
     <li id={`lib-shelf-${b.id}`} className="lib-crate-slot">
@@ -150,7 +151,7 @@ function CrateRecord({ b, members, today, lit, picked, onOpen }: {
             )}
           <span className="lib-sleeve-badge" aria-hidden="true">🎧</span>
           {b.wanted && <span className="lib-ribbon" aria-hidden="true">⭐</span>}
-          {due && <span className={`lib-card-tag ${due === 'Overdue' ? 'lib-overdue' : ''}`} aria-hidden="true">{due}</span>}
+          {due && <span className={`lib-card-tag ${isOverdue(b, today) ? 'lib-overdue' : ''}`} aria-hidden="true">{due}</span>}
         </span>
       </button>
     </li>

@@ -7,6 +7,7 @@ import { useApp } from './AppContext.tsx'
 import { formatTime } from './timeFormat.ts'
 import { dayName } from './Snapshot.tsx'
 import { announce } from './a11y.tsx'
+import { t, tc } from './i18n.ts'
 import { askWhenTaken, catchUpLabel, doseTimeLabel, scheduleLabel, STATUS, statusLabel, weekCells } from './medications.ts'
 import TakeNow, { WhenTakenSheet } from './TakeNow.tsx'
 import type { Medication, MedicationHistory } from './types.ts'
@@ -27,11 +28,11 @@ export default function Medications({ memberId }: { memberId?: string }) {
     let canceled = false
     api.getMedicationHistory(member.id)
       .then(h => { if (!canceled) { setData(h); setError('') } })
-      .catch(e => { if (!canceled) setError(e instanceof ApiError && e.status === 403 ? `${member.name}'s medicines are private. They show on ${member.name}'s own device and parents' devices.` : e instanceof ApiError ? e.message : "Couldn't open this page.") })
+      .catch(e => { if (!canceled) setError(e instanceof ApiError && e.status === 403 ? t("{name}'s medicines are private. They show on {name}'s own device and parents' devices.", { name: member.name }) : e instanceof ApiError ? e.message : t("Couldn't open this page.")) })
     return () => { canceled = true }
   }, [member?.id, refreshTick, reload]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!member) return <div className="state-card">No one in the family yet.</div>
+  if (!member) return <div className="state-card">{t('No one in the family yet.')}</div>
   const shown = data?.memberId === member.id ? data : null
   const byId = new Map(shown?.medications.map(m => [m.id, m]))
   const today = shown?.days.at(-1)
@@ -44,9 +45,9 @@ export default function Medications({ memberId }: { memberId?: string }) {
     setBusy(k)
     try {
       await api.markDose(d.medicationId, { date, time: d.time, action, ...(at ? { at } : {}) })
-      const said = action === 'taken' ? 'Marked taken ✓' : 'Marked skipped'
+      const said = t(action === 'taken' ? 'Marked taken ✓' : 'Marked skipped')
       toast(said); announce(said); setReload(x => x + 1)
-    } catch (e) { toast(e instanceof ApiError ? e.message : "Couldn't save that", true) }
+    } catch (e) { toast(e instanceof ApiError ? e.message : t("Couldn't save that"), true) }
     finally { setBusy(null) }
   }
   const rows = (day: Day, doses: Day['doses']) => (
@@ -63,7 +64,7 @@ export default function Medications({ memberId }: { memberId?: string }) {
             <span className="meds-status"><span aria-hidden="true">{s.emoji}</span> {statusLabel(d)}{d.at && (d.status === 'taken' || d.status === 'skipped') ? ` ${formatTime(d.at)}` : ''}</span>
             {taken && <div className="meds-now-actions meds-catch-up" role="group" aria-label={`${medName(m)}, ${doseTimeLabel(d)}`}>
               <button className="btn btn-primary" disabled={busy === k} onClick={() => (askWhenTaken(d.dueAt, Date.now()) ? setAsking({ date: day.date, d }) : mark(day.date, d, 'taken'))}>{taken}</button>
-              <button className="btn btn-secondary" disabled={busy === k} onClick={() => mark(day.date, d, 'skipped')}>Skipped</button>
+              <button className="btn btn-secondary" disabled={busy === k} onClick={() => mark(day.date, d, 'skipped')}>{tc('dose', 'Skipped')}</button>
             </div>}
           </li>
         )
@@ -77,32 +78,32 @@ export default function Medications({ memberId }: { memberId?: string }) {
         <div className="profile-hero">
           <Face m={member} className="profile-avatar" aria-hidden="true" />
           <div>
-            <h2 className="profile-name">{member.name}'s medicines</h2>
-            <p className="profile-meta">🔒 {member.grownUp ? `Private to ${member.name}'s own devices and parent devices.` : `For ${member.name} and parents.`}</p>
+            <h2 className="profile-name">{t("{name}'s medicines", { name: member.name })}</h2>
+            <p className="profile-meta">🔒 {t(member.grownUp ? "Private to {name}'s own devices and parent devices." : 'For {name} and parents.', { name: member.name })}</p>
           </div>
         </div>
-        {parentDevice && <div className="profile-actions"><a className="btn btn-secondary" href="#/trackers/health">Change medicines</a></div>}
+        {parentDevice && <div className="profile-actions"><a className="btn btn-secondary" href="#/trackers/health">{t('Change medicines')}</a></div>}
       </section>
       <TakeNow memberId={member.id} />
       {error && <p className="snap-empty" role="alert">{error}</p>}
-      {!shown && !error && <p className="snap-empty">Loading…</p>}
-      {shown && shown.medications.length === 0 && <p className="snap-empty">No medicines for {member.name}.{parentDevice ? ' Add one in Trackers → Health.' : ''}</p>}
+      {!shown && !error && <p className="snap-empty">{t('Loading…')}</p>}
+      {shown && shown.medications.length === 0 && <p className="snap-empty">{t('No medicines for {name}.', { name: member.name })}{parentDevice ? ` ${t('Add one in Trackers → Health.')}` : ''}</p>}
       {shown && today && shown.medications.length > 0 && <>
         <section className="board-card" aria-labelledby="meds-today">
-          <h3 id="meds-today" className="snap-heading">Today</h3>
-          {today.doses.length === 0 ? <p className="snap-dim">Nothing today.</p> : rows(today, today.doses)}
+          <h3 id="meds-today" className="snap-heading">{t('Today')}</h3>
+          {today.doses.length === 0 ? <p className="snap-dim">{t('Nothing today.')}</p> : rows(today, today.doses)}
         </section>
         {yesterday && behind.length > 0 && <section className="board-card" aria-labelledby="meds-yesterday">
-          <h3 id="meds-yesterday" className="snap-heading">Yesterday</h3>
-          <p className="snap-dim">Not marked yet. If it was taken or skipped, you can still say so.</p>
+          <h3 id="meds-yesterday" className="snap-heading">{t('Yesterday')}</h3>
+          <p className="snap-dim">{t('Not marked yet. If it was taken or skipped, you can still say so.')}</p>
           {rows(yesterday, behind)}
         </section>}
         <section className="board-card" aria-labelledby="meds-week">
-          <h3 id="meds-week" className="snap-heading">Last 7 days</h3>
+          <h3 id="meds-week" className="snap-heading">{t('Last 7 days')}</h3>
           <div className="meds-grid-wrap">
             <table className="meds-grid">
               <thead>
-                <tr><th scope="col"><span className="sr-only">Medicine</span></th>{shown.days.map(d => <th key={d.date} scope="col" className={d.date === shown.today ? 'meds-grid-today' : undefined}>{dayName(d.date, { weekday: 'short' })}{d.date === shown.today && <span className="sr-only"> (today)</span>}</th>)}</tr>
+                <tr><th scope="col"><span className="sr-only">{t('Medicine')}</span></th>{shown.days.map(d => <th key={d.date} scope="col" className={d.date === shown.today ? 'meds-grid-today' : undefined}>{dayName(d.date, { weekday: 'short' })}{d.date === shown.today && <span className="sr-only"> {t('(today)')}</span>}</th>)}</tr>
               </thead>
               <tbody>
                 {shown.medications.map(m => (
@@ -110,7 +111,7 @@ export default function Medications({ memberId }: { memberId?: string }) {
                     <th scope="row"><span className="meds-grid-name">{m.name}</span><span className="meds-grid-sub">{scheduleLabel(m)}</span></th>
                     {weekCells(shown.days, m.id).map(c => (
                       <td key={c.date} className={c.status ? `meds-${c.status}` : ''}>
-                        {c.status ? <><span aria-hidden="true">{STATUS[c.status].emoji}</span><span className="sr-only">{STATUS[c.status].label}</span></> : <span className="snap-dim" aria-label="No dose">·</span>}
+                        {c.status ? <><span aria-hidden="true">{STATUS[c.status].emoji}</span><span className="sr-only">{tc('dose', STATUS[c.status].label)}</span></> : <span className="snap-dim" aria-label={t('No dose')}>·</span>}
                       </td>
                     ))}
                   </tr>
@@ -118,7 +119,7 @@ export default function Medications({ memberId }: { memberId?: string }) {
               </tbody>
             </table>
           </div>
-          <p className="meds-legend">{(['taken', 'skipped', 'missed'] as const).map(k => <span key={k}><span aria-hidden="true">{STATUS[k].emoji}</span> {STATUS[k].label}</span>)}</p>
+          <p className="meds-legend">{(['taken', 'skipped', 'missed'] as const).map(k => <span key={k}><span aria-hidden="true">{STATUS[k].emoji}</span> {tc('dose', STATUS[k].label)}</span>)}</p>
         </section>
       </>}
       {asking && shown && <WhenTakenSheet dose={{ date: asking.date, dueAt: asking.d.dueAt }} today={shown.today} onClose={() => setAsking(null)}
@@ -127,4 +128,4 @@ export default function Medications({ memberId }: { memberId?: string }) {
   )
 }
 
-const medName = (m: Medication | undefined) => (m ? (m.dose ? `${m.name} · ${m.dose}` : m.name) : 'Removed medicine')
+const medName = (m: Medication | undefined) => (m ? (m.dose ? `${m.name} · ${m.dose}` : m.name) : t('Removed medicine'))

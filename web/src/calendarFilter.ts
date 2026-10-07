@@ -1,6 +1,7 @@
 // Calendar filters (docs/using/calendar.md "Calendar filters"). The server decides what's hidden
 // (server/src/calendar-filter.ts); this mirror only drives the settings preview, "Hide events like
 // this" and the demo. server/test/calendar-filters.test.ts checks the two agree.
+import { t, tn } from './i18n.ts'
 
 export type CalendarFilter = {
   mode: 'all' | 'only' | 'except'
@@ -42,11 +43,11 @@ export function filterShows(f: CalendarFilter, ev: FilterEvent): boolean {
 
 /** The calendar sheet's row: what the filter does now, opening the filter sheet. */
 export function filterSummary(f: CalendarFilter | undefined): string {
-  if (!f || !filterActive(f)) return 'All events'
-  const parts = [f.mode === 'only' ? 'Only matching' : 'All except matching']
-  if (f.keywords.length) parts.push(`${f.keywords.length} word${f.keywords.length === 1 ? '' : 's'}`)
-  if (f.allDay !== 'any') parts.push(f.allDay === 'allDay' ? 'all-day' : 'timed')
-  if (f.categoryIds.length) parts.push(`${f.categoryIds.length} categor${f.categoryIds.length === 1 ? 'y' : 'ies'}`)
+  if (!f || !filterActive(f)) return t('All events')
+  const parts = [f.mode === 'only' ? t('Only matching') : t('All except matching')]
+  if (f.keywords.length) parts.push(tn(f.keywords.length, '{n} word', '{n} words'))
+  if (f.allDay !== 'any') parts.push(f.allDay === 'allDay' ? t('all-day') : t('timed'))
+  if (f.categoryIds.length) parts.push(tn(f.categoryIds.length, '{n} category', '{n} categories'))
   return parts.join(' · ')
 }
 

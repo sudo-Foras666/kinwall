@@ -1,5 +1,7 @@
 // The Insights page's chart helpers (Insights.tsx). Pure, so web/test/insights.test.ts covers them.
 // The numbers themselves come from the server (server/src/insights.ts); these only bucket and scale.
+import { format } from 'date-fns'
+import { t, tn } from './i18n.ts'
 import type { InsightDay, InsightRange } from './types.ts'
 
 export const RANGES: { key: InsightRange; label: string }[] = [
@@ -58,10 +60,9 @@ export function sleepPath(days: InsightDay[], w: number, h: number): string {
   return path
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 /** "2026-09-03" -> "Sep 3". */
-export const shortDate = (date: string) => `${MONTHS[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}`
+export const shortDate = (date: string) => format(new Date(`${date}T12:00:00`), t('MMM d'))
 
-export const confidenceLabel = (c: 'early' | 'clear') => (c === 'clear' ? 'Clear pattern' : 'Early sign')
+export const confidenceLabel = (c: 'early' | 'clear') => t(c === 'clear' ? 'Clear pattern' : 'Early sign')
 
-export const keepCheckingIn = (n: number) => `Keep checking in: patterns show up after about 3 weeks (${n} ${n === 1 ? 'day' : 'days'} so far).`
+export const keepCheckingIn = (n: number) => tn(n, 'Keep checking in: patterns show up after about 3 weeks ({n} day so far).', 'Keep checking in: patterns show up after about 3 weeks ({n} days so far).')

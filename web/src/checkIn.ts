@@ -1,4 +1,5 @@
 // The daily check-in row at the end of a person's day (Snapshot.tsx). Pure, so web/test/checkIn.test.ts covers it.
+import { t, tn } from './i18n.ts'
 import type { Snapshot, TempCheckSettings } from './types.ts'
 
 export type CheckInState = 'hidden' | 'locked' | 'ready' | 'done'
@@ -10,9 +11,9 @@ export function checkInState(snap: Pick<Snapshot, 'range' | 'checkInPoints' | 'c
 }
 
 export function checkInLabel(state: CheckInState, points: number): string {
-  if (state === 'done') return 'Checked in today ✓'
-  if (state === 'locked') return 'Read to the end to check in'
-  return `I'm all caught up ✓ · +${points} point${points === 1 ? '' : 's'}`
+  if (state === 'done') return t('Checked in today ✓')
+  if (state === 'locked') return t('Read to the end to check in')
+  return tn(points, "I'm all caught up ✓ · +{n} point", "I'm all caught up ✓ · +{n} points")
 }
 
 /** Where a check-in link (#/calendar?checkin=<member>) lands in their day: the evening check from

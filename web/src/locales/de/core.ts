@@ -20,6 +20,7 @@ export default {
   'Photos': 'Fotos',
   'Main': 'Hauptmenü',
   'More': 'Mehr',
+  'now-next|Next': 'Danach',
   'More, showing {tab}': 'Mehr, zeigt {tab}',
   ', {n} to approve': ', {n} zu bestätigen',
   'Skip to content': 'Zum Inhalt springen',

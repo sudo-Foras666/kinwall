@@ -15,6 +15,7 @@ import { MEAL_SLOTS, SLOT_LABEL, mealDayLabel, minutesLabel, recipeTime, serving
 import { pickerRecipes } from './recipe-search.ts'
 import type { Meal, MealInput, MealKind, MealSlot, MealStatus, Recipe } from './meal-types.ts'
 import { Face } from './Face'
+import { t } from './i18n.ts'
 
 export type MealDraft = { date: string; slot: MealSlot; recipe?: Recipe }
 
@@ -22,7 +23,7 @@ export type MealDraft = { date: string; slot: MealSlot; recipe?: Recipe }
 export function EaterAvatars({ ids, members }: { ids: string[]; members: Member[] }) {
   const eaters = members.filter(m => ids.includes(m.id))
   if (!eaters.length) return null
-  return <span className="meal-eaters" role="img" aria-label={`Eating: ${eaters.map(m => m.name).join(', ')}`}>
+  return <span className="meal-eaters" role="img" aria-label={t('Eating: {names}', { names: eaters.map(m => m.name).join(', ') })}>
     {eaters.map(m => <Face key={m.id} m={m} />)}
   </span>
 }
@@ -59,7 +60,7 @@ export default function MealSheet({ meal, initial, recipes, admin, owner, onClos
   const start = startBy(draft.plannedTime, timed?.totalMinutes)
   // A meal whose recipe was deleted keeps its saved copy; the picker offers it back.
   const savedRecipe = meal?.mealKind === 'recipe' && meal.recipeSnapshot && !recipes.some(r => r.id === meal.recipeId) ? { id: meal.recipeId, name: meal.recipeSnapshot.name } : null
-  const recipeLabel = selectedRecipe?.name ?? (snapshot ? `${snapshot.name} (saved recipe)` : 'Choose a recipe')
+  const recipeLabel = selectedRecipe?.name ?? (snapshot ? t('{name} (saved recipe)', { name: snapshot.name }) : t('Choose a recipe'))
   const pick = (recipe: Recipe | null) => {
     setDraft(d => recipe ? { ...d, recipeId: recipe.id, title: recipe.name, servings: recipe.defaultServings } : { ...d, recipeId: meal!.recipeId, title: meal!.recipeSnapshot!.name, servings: meal!.servings })
     setRefreshRecipe(false); setPicking(false)
@@ -67,89 +68,89 @@ export default function MealSheet({ meal, initial, recipes, admin, owner, onClos
   const update = <K extends keyof MealInput>(key: K, value: MealInput[K]) => setDraft(d => ({ ...d, [key]: value }))
   const save = async () => {
     if (!canUpdate) return
-    if (admin && (!draft.title.trim() || (draft.mealKind === 'recipe' && !snapshot))) { setError('Add a meal name and select a recipe for recipe meals.'); return }
+    if (admin && (!draft.title.trim() || (draft.mealKind === 'recipe' && !snapshot))) { setError(t('Add a meal name and select a recipe for recipe meals.')); return }
     setBusy(true); setError('')
     try {
       const body = { ...draft, title: draft.title.trim(), recipeId: draft.mealKind === 'recipe' ? draft.recipeId : null }
       if (meal) await api.updateMeal(meal.id, admin ? { ...body, ...(refreshRecipe ? { refreshRecipe: true } : {}) } : { notes: draft.notes, status: draft.status })
       else await api.createMeal(body)
-      toast('Meal saved'); onSaved()
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not save meal.') }
+      toast(t('Meal saved')); onSaved()
+    } catch (e) { setError(e instanceof Error ? e.message : t('Could not save meal.')) }
     finally { setBusy(false) }
   }
   const remove = async () => {
-    if (!meal || !await dialog.confirm({ title: `Delete “${meal.title}”?`, body: 'Remove this meal from the plan? Items already added to shopping lists stay there.', confirmLabel: 'Delete meal', danger: true })) return
+    if (!meal || !await dialog.confirm({ title: t('Delete “{name}”?', { name: meal.title }), body: t('Remove this meal from the plan? Items already added to shopping lists stay there.'), confirmLabel: t('Delete meal'), danger: true })) return
     setBusy(true); setError('')
-    try { await api.deleteMeal(meal.id); toast('Meal deleted'); onSaved() }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not delete meal.') }
+    try { await api.deleteMeal(meal.id); toast(t('Meal deleted')); onSaved() }
+    catch (e) { setError(e instanceof Error ? e.message : t('Could not delete meal.')) }
     finally { setBusy(false) }
   }
   // Swap with a meal from today through the end of this meal's week (the planner's week).
   const swapRange = meal && admin ? swapWindow(meal.date, todayKeyInTz(settings.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone), settings.weekStart) : null
   const swap = async (other: Meal) => {
-    const done = `Swapped with ${mealDayLabel(other.date, { weekday: 'long' })}’s ${SLOT_LABEL[other.slot].toLowerCase()}`
+    const done = t('Swapped with {day}’s {slot}', { day: mealDayLabel(other.date, { weekday: 'long' }), slot: t(SLOT_LABEL[other.slot].toLowerCase()) })
     setSwapping(false); setBusy(true); setError('')
     try { await api.swapMeal(meal!.id, other.id); toast(done); onSaved() }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not swap meals.') }
+    catch (e) { setError(e instanceof Error ? e.message : t('Could not swap meals.')) }
     finally { setBusy(false) }
   }
   const close = () => { if (!busy) onClose() }
-  return <Sheet title={meal ? admin ? 'Edit meal' : meal.title : 'Plan a meal'} onClose={close} dismissable={!busy} actions={canUpdate ? <>
-    {meal && admin && <button className="icon-btn" aria-label="Delete meal" disabled={busy} onClick={remove}><TrashIcon /></button>}
-    <button className="btn btn-secondary" disabled={busy} onClick={close}>Cancel</button>
-    <button type="submit" form={formId} className="btn btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save meal'}</button>
+  return <Sheet title={meal ? admin ? t('Edit meal') : meal.title : t('Plan a meal')} onClose={close} dismissable={!busy} actions={canUpdate ? <>
+    {meal && admin && <button className="icon-btn" aria-label={t('Delete meal')} disabled={busy} onClick={remove}><TrashIcon /></button>}
+    <button className="btn btn-secondary" disabled={busy} onClick={close}>{t('Cancel')}</button>
+    <button type="submit" form={formId} className="btn btn-primary" disabled={busy}>{busy ? t('Saving…') : t('Save meal')}</button>
   </> : undefined}>
     <form id={formId} onSubmit={e => { e.preventDefault(); void save() }}>
       {admin ? <fieldset className="meal-fieldset" disabled={busy}>
-        <div className="field"><label htmlFor={`${formId}-kind`}>Meal type</label><select id={`${formId}-kind`} value={draft.mealKind} onChange={e => update('mealKind', e.target.value as MealKind)}><option value="recipe">Recipe</option><option value="freeform">Free-form meal</option><option value="dining_out">Dining out</option></select></div>
-        {draft.mealKind === 'recipe' && <div className="field"><label htmlFor={`${formId}-recipe`}>Recipe</label>
-          <button id={`${formId}-recipe`} type="button" className="sheet-link" aria-haspopup="dialog" aria-label={`Recipe: ${recipeLabel}`} onClick={() => setPicking(true)}>
+        <div className="field"><label htmlFor={`${formId}-kind`}>{t('Meal type')}</label><select id={`${formId}-kind`} value={draft.mealKind} onChange={e => update('mealKind', e.target.value as MealKind)}><option value="recipe">{t('Recipe')}</option><option value="freeform">{t('Free-form meal')}</option><option value="dining_out">{t('Dining out')}</option></select></div>
+        {draft.mealKind === 'recipe' && <div className="field"><label htmlFor={`${formId}-recipe`}>{t('Recipe')}</label>
+          <button id={`${formId}-recipe`} type="button" className="sheet-link" aria-haspopup="dialog" aria-label={t('Recipe: {name}', { name: recipeLabel })} onClick={() => setPicking(true)}>
             {selectedRecipe?.imageUrl && <RecipePhoto id={selectedRecipe.id} className="recipe-pick-thumb" />}
             <span>{recipeLabel}</span><ChevronRight />
           </button>
-          {!recipes.some(r => !r.archived) && !snapshot && <p className="field-hint">Create a recipe in the Recipe library first.</p>}
+          {!recipes.some(r => !r.archived) && !snapshot && <p className="field-hint">{t('Create a recipe in the Recipe library first.')}</p>}
         </div>}
-        <div className="field"><label htmlFor={`${formId}-title`}>{draft.mealKind === 'dining_out' ? 'Place or meal name' : 'Meal name'}</label><input id={`${formId}-title`} type="text" required maxLength={200} placeholder={draft.mealKind === 'dining_out' ? 'Eating out, school cafeteria…' : 'What are we eating?'} value={draft.title} onChange={e => update('title', e.target.value)} /></div>
+        <div className="field"><label htmlFor={`${formId}-title`}>{draft.mealKind === 'dining_out' ? t('Place or meal name') : t('Meal name')}</label><input id={`${formId}-title`} type="text" required maxLength={200} placeholder={draft.mealKind === 'dining_out' ? t('Eating out, school cafeteria…') : t('What are we eating?')} value={draft.title} onChange={e => update('title', e.target.value)} /></div>
         {/* Swapping is the usual edit, so it sits right under what the meal is. */}
-        {swapRange && <div className="sheet-links"><button className="sheet-link" type="button" aria-haspopup="dialog" onClick={() => setSwapping(true)}><CalendarIcon /><span>Swap with…<small>Trade days with another meal this week</small></span><ChevronRight /></button></div>}
+        {swapRange && <div className="sheet-links"><button className="sheet-link" type="button" aria-haspopup="dialog" onClick={() => setSwapping(true)}><CalendarIcon /><span>{t('Swap with…')}<small>{t('Trade days with another meal this week')}</small></span><ChevronRight /></button></div>}
         <div className="meal-form-row">
-          <div className="field"><label htmlFor={`${formId}-date`}>Date</label><input id={`${formId}-date`} type="date" required value={draft.date} onChange={e => update('date', e.target.value)} /></div>
-          <div className="field"><label htmlFor={`${formId}-slot`}>Meal slot</label><select id={`${formId}-slot`} value={draft.slot} onChange={e => update('slot', e.target.value as MealSlot)}>{MEAL_SLOTS.map(slot => <option key={slot} value={slot}>{SLOT_LABEL[slot]}</option>)}</select></div>
+          <div className="field"><label htmlFor={`${formId}-date`}>{t('Date')}</label><input id={`${formId}-date`} type="date" required value={draft.date} onChange={e => update('date', e.target.value)} /></div>
+          <div className="field"><label htmlFor={`${formId}-slot`}>{t('Meal slot')}</label><select id={`${formId}-slot`} value={draft.slot} onChange={e => update('slot', e.target.value as MealSlot)}>{MEAL_SLOTS.map(slot => <option key={slot} value={slot}>{t(SLOT_LABEL[slot])}</option>)}</select></div>
         </div>
         <div className="meal-form-row">
-          <div className="field"><label htmlFor={`${formId}-servings`}>Servings</label><input id={`${formId}-servings`} type="number" required min="0.01" max="10000" step="any" value={draft.servings || ''} onChange={e => update('servings', Number(e.target.value))} /></div>
-          <div className="field"><label htmlFor={`${formId}-time`}>Time</label><input id={`${formId}-time`} type="time" placeholder={settings.mealTimes[draft.slot]} aria-describedby={`${formId}-time-hint`} value={draft.plannedTime ?? ''} onChange={e => update('plannedTime', e.target.value || null)} />
+          <div className="field"><label htmlFor={`${formId}-servings`}>{t('Servings')}</label><input id={`${formId}-servings`} type="number" required min="0.01" max="10000" step="any" value={draft.servings || ''} onChange={e => update('servings', Number(e.target.value))} /></div>
+          <div className="field"><label htmlFor={`${formId}-time`}>{t('Time')}</label><input id={`${formId}-time`} type="time" placeholder={settings.mealTimes[draft.slot]} aria-describedby={`${formId}-time-hint`} value={draft.plannedTime ?? ''} onChange={e => update('plannedTime', e.target.value || null)} />
             {/* A time field can't show a placeholder, so the usual time sits under it. */}
-            <p className="field-hint" id={`${formId}-time-hint`}>{draft.plannedTime ? 'Clear it to use the usual time.' : `Usual ${SLOT_LABEL[draft.slot].toLowerCase()} time: ${formatTime(settings.mealTimes[draft.slot])}`}</p></div>
+            <p className="field-hint" id={`${formId}-time-hint`}>{draft.plannedTime ? t('Clear it to use the usual time.') : t('Usual {slot} time: {time}', { slot: t(SLOT_LABEL[draft.slot].toLowerCase()), time: formatTime(settings.mealTimes[draft.slot]) })}</p></div>
         </div>
-        <div className="field"><label htmlFor={`${formId}-assignee`}>Cooking</label><select id={`${formId}-assignee`} value={draft.assigneeMemberId ?? ''} onChange={e => update('assigneeMemberId', e.target.value || null)}><option value="">Nobody yet</option>{members.map(m => <option key={m.id} value={m.id}>{m.avatar} {m.name}</option>)}</select></div>
-        <MemberPicker members={members} selected={draft.eaterIds} label="Who’s eating" noneLabel="Not set" onChange={ids => setDraft(d => ({ ...d, eaterIds: ids, servings: ids.length || d.servings }))} />
-        {members.length > 0 && draft.servings > 0 && <p className="field-hint meal-eaters-hint">{!draft.eaterIds.length ? `${servingsLabel(draft.servings)}: pick ${draft.servings === 1 ? 'who’s eating' : `${draft.servings} people`}` : draft.eaterIds.length === draft.servings ? `${draft.eaterIds.length} of ${servingsLabel(draft.servings)}` : `${draft.eaterIds.length} selected for ${servingsLabel(draft.servings)}`}</p>}
-        {draft.mealKind === 'dining_out' && <div className="field"><label htmlFor={`${formId}-url`}>Website (optional)</label><input id={`${formId}-url`} type="url" pattern="https?://.*" maxLength={2000} value={draft.sourceUrl ?? ''} onChange={e => update('sourceUrl', e.target.value || null)} /></div>}
+        <div className="field"><label htmlFor={`${formId}-assignee`}>{t('Cooking')}</label><select id={`${formId}-assignee`} value={draft.assigneeMemberId ?? ''} onChange={e => update('assigneeMemberId', e.target.value || null)}><option value="">{t('Nobody yet')}</option>{members.map(m => <option key={m.id} value={m.id}>{m.avatar} {m.name}</option>)}</select></div>
+        <MemberPicker members={members} selected={draft.eaterIds} label={t('Who’s eating')} noneLabel={t('Not set')} onChange={ids => setDraft(d => ({ ...d, eaterIds: ids, servings: ids.length || d.servings }))} />
+        {members.length > 0 && draft.servings > 0 && <p className="field-hint meal-eaters-hint">{!draft.eaterIds.length ? draft.servings === 1 ? t('{servings}: pick who’s eating', { servings: servingsLabel(draft.servings) }) : t('{servings}: pick {n} people', { servings: servingsLabel(draft.servings), n: draft.servings }) : draft.eaterIds.length === draft.servings ? t('{n} of {servings}', { n: draft.eaterIds.length, servings: servingsLabel(draft.servings) }) : t('{n} selected for {servings}', { n: draft.eaterIds.length, servings: servingsLabel(draft.servings) })}</p>}
+        {draft.mealKind === 'dining_out' && <div className="field"><label htmlFor={`${formId}-url`}>{t('Website (optional)')}</label><input id={`${formId}-url`} type="url" pattern="https?://.*" maxLength={2000} value={draft.sourceUrl ?? ''} onChange={e => update('sourceUrl', e.target.value || null)} /></div>}
       </fieldset> : <>
-        <p>{mealDayLabel(draft.date)} · {SLOT_LABEL[draft.slot]}{draft.plannedTime ? ` · ${draft.plannedTime}` : ''}</p>
-        <p>{draft.mealKind === 'dining_out' ? 'Dining out · ' : ''}{servingsLabel(draft.servings)} · Cooking: {members.find(m => m.id === draft.assigneeMemberId)?.name ?? 'nobody yet'}</p>
-        {draft.eaterIds.length > 0 && <p className="meal-eaters-row">Eating <EaterAvatars ids={draft.eaterIds} members={members} /></p>}
+        <p>{mealDayLabel(draft.date)} · {t(SLOT_LABEL[draft.slot])}{draft.plannedTime ? ` · ${draft.plannedTime}` : ''}</p>
+        <p>{draft.mealKind === 'dining_out' ? `${t('Dining out')} · ` : ''}{servingsLabel(draft.servings)} · {t('Cooking: {name}', { name: members.find(m => m.id === draft.assigneeMemberId)?.name ?? t('nobody yet') })}</p>
+        {draft.eaterIds.length > 0 && <p className="meal-eaters-row">{t('Eating')} <EaterAvatars ids={draft.eaterIds} members={members} /></p>}
       </>}
-      {snapshot && (time || meal?.recipeSnapshot) && <section aria-label="Recipe">
-        {time && <p className="recipe-time">⏱ {time}{start ? ` · Start by ${formatTime(start)}` : ''}</p>}
-        {meal?.recipeSnapshot && <p className="field-hint">The recipe is saved with this meal, so later recipe edits don’t change it.</p>}
-        {admin && meal?.recipeSnapshot && selectedRecipe && !selectedRecipe.archived && draft.recipeId === meal.recipeId && <label className="meal-check"><input type="checkbox" checked={refreshRecipe} disabled={busy} onChange={e => setRefreshRecipe(e.target.checked)} /> Refresh from the current recipe when saving</label>}
+      {snapshot && (time || meal?.recipeSnapshot) && <section aria-label={t('Recipe')}>
+        {time && <p className="recipe-time">⏱ {time}{start ? ` · ${t('Start by {time}', { time: formatTime(start) })}` : ''}</p>}
+        {meal?.recipeSnapshot && <p className="field-hint">{t('The recipe is saved with this meal, so later recipe edits don’t change it.')}</p>}
+        {admin && meal?.recipeSnapshot && selectedRecipe && !selectedRecipe.archived && draft.recipeId === meal.recipeId && <label className="meal-check"><input type="checkbox" checked={refreshRecipe} disabled={busy} onChange={e => setRefreshRecipe(e.target.checked)} /> {t('Refresh from the current recipe when saving')}</label>}
       </section>}
-      {draft.mealKind !== 'recipe' && <p className="field-hint">{draft.mealKind === 'dining_out' ? 'Dining out' : 'Free-form meals'} do not add ingredients to the shopping projection.</p>}
+      {draft.mealKind !== 'recipe' && <p className="field-hint">{draft.mealKind === 'dining_out' ? t('Dining out does not add ingredients to the shopping projection.') : t('Free-form meals do not add ingredients to the shopping projection.')}</p>}
       {canUpdate ? <fieldset className="meal-fieldset meal-spaced" disabled={busy}>
-        <div className="field"><label htmlFor={`${formId}-status`}>Status</label><select id={`${formId}-status`} value={draft.status} onChange={e => update('status', e.target.value as MealStatus)}><option value="planned">Planned</option><option value="prepared">Prepared</option><option value="handled">Handled</option></select></div>
-        <div className="field"><label htmlFor={`${formId}-notes`}>Notes</label><textarea id={`${formId}-notes`} maxLength={10000} value={draft.notes ?? ''} onChange={e => update('notes', e.target.value || null)} /></div>
-      </fieldset> : <><p>Status: {draft.status}</p>{draft.notes && <p className="meal-prose">{draft.notes}</p>}</>}
+        <div className="field"><label htmlFor={`${formId}-status`}>{t('Status')}</label><select id={`${formId}-status`} value={draft.status} onChange={e => update('status', e.target.value as MealStatus)}><option value="planned">{t('Planned')}</option><option value="prepared">{t('Prepared')}</option><option value="handled">{t('Handled')}</option></select></div>
+        <div className="field"><label htmlFor={`${formId}-notes`}>{t('Notes')}</label><textarea id={`${formId}-notes`} maxLength={10000} value={draft.notes ?? ''} onChange={e => update('notes', e.target.value || null)} /></div>
+      </fieldset> : <><p>{t('Status: {status}', { status: t(draft.status) })}</p>{draft.notes && <p className="meal-prose">{draft.notes}</p>}</>}
       {((snapshot && selectedRecipe) || meal?.sourceUrl || linkedMeal?.calendarEventId) && <div className="sheet-links">
-        {snapshot && selectedRecipe && <button className="sheet-link" type="button" onClick={() => onRecipe(selectedRecipe)}><BookIcon /><span>Open recipe</span><ChevronRight /></button>}
+        {snapshot && selectedRecipe && <button className="sheet-link" type="button" onClick={() => onRecipe(selectedRecipe)}><BookIcon /><span>{t('Open recipe')}</span><ChevronRight /></button>}
         {meal?.sourceUrl && <SourceLink url={meal.sourceUrl} pdfPath={`api/meals/${encodeURIComponent(meal.id)}/source.pdf`} title={meal.title} label={meal.mealKind === 'dining_out' ? 'Website' : 'Recipe website'} />}
-        {linkedMeal?.calendarEventId && <a className="sheet-link" href={`#/calendar?at=${linkedMeal.date}&event=${encodeURIComponent(linkedMeal.calendarEventId)}`}><CalendarIcon /><span>Linked calendar event</span><ChevronRight /></a>}
+        {linkedMeal?.calendarEventId && <a className="sheet-link" href={`#/calendar?at=${linkedMeal.date}&event=${encodeURIComponent(linkedMeal.calendarEventId)}`}><CalendarIcon /><span>{t('Linked calendar event')}</span><ChevronRight /></a>}
       </div>}
       {admin && linkedMeal && <div className="meal-actions">
-        <button className="btn btn-secondary" type="button" disabled={busy} onClick={() => setCalendarOpen(true)}>{linkedMeal.calendarEventId ? 'Manage calendar event' : 'Add to calendar'}</button>
+        <button className="btn btn-secondary" type="button" disabled={busy} onClick={() => setCalendarOpen(true)}>{linkedMeal.calendarEventId ? t('Manage calendar event') : t('Add to calendar')}</button>
       </div>}
-      {admin && !meal && <p className="field-hint">Save this meal to put it on a calendar.</p>}
+      {admin && !meal && <p className="field-hint">{t('Save this meal to put it on a calendar.')}</p>}
       {error && <p className="field-error" role="alert">{error}</p>}
     </form>
     {swapping && meal && swapRange && <SwapPicker meal={meal} range={swapRange} recipes={recipes} onPick={other => void swap(other)} onClose={() => setSwapping(false)} />}
@@ -174,20 +175,20 @@ function RecipePicker({ recipes, currentId, saved, onPick, onClose }: {
     const next = items[items.indexOf(document.activeElement as HTMLElement) + (e.key === 'ArrowDown' ? 1 : -1)]
     if (next) { e.preventDefault(); next.focus() }
   }
-  return <Sheet title="Choose a recipe" onClose={onClose}>
+  return <Sheet title={t('Choose a recipe')} onClose={onClose}>
     <div className="recipe-picker" onKeyDown={onKey}>
-      <div className="field"><label htmlFor="recipe-picker-search">Find a recipe</label>
-        <input id="recipe-picker-search" type="search" data-autofocus placeholder="Recipe name or ingredient" value={query} onChange={e => setQuery(e.target.value)}
+      <div className="field"><label htmlFor="recipe-picker-search">{t('Find a recipe')}</label>
+        <input id="recipe-picker-search" type="search" data-autofocus placeholder={t('Recipe name or ingredient')} value={query} onChange={e => setQuery(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && shown[0]) { e.preventDefault(); onPick(shown[0]) } }} /></div>
-      {hasBasics && <div className="field"><label htmlFor="recipe-picker-show">Show</label><select id="recipe-picker-show" value={basics ? 'all' : 'meals'} onChange={e => setBasics(e.target.value === 'all')}><option value="meals">Meals</option><option value="all">Meals and basics</option></select></div>}
+      {hasBasics && <div className="field"><label htmlFor="recipe-picker-show">{t('Show')}</label><select id="recipe-picker-show" value={basics ? 'all' : 'meals'} onChange={e => setBasics(e.target.value === 'all')}><option value="meals">{t('Meals')}</option><option value="all">{t('Meals and basics')}</option></select></div>}
       <div className="sheet-links">
-        {saved && !query.trim() && <button type="button" className="sheet-link" aria-current={currentId === saved.id || undefined} onClick={() => onPick(null)}><BookIcon /><span>{saved.name} (saved recipe)<small>Kept with this meal</small></span></button>}
+        {saved && !query.trim() && <button type="button" className="sheet-link" aria-current={currentId === saved.id || undefined} onClick={() => onPick(null)}><BookIcon /><span>{t('{name} (saved recipe)', { name: saved.name })}<small>{t('Kept with this meal')}</small></span></button>}
         {shown.map(r => <button key={r.id} type="button" className="sheet-link" aria-current={r.id === currentId || undefined} onClick={() => onPick(r)}>
           {r.imageUrl ? <RecipePhoto id={r.id} className="recipe-pick-thumb" /> : <BookIcon />}
-          <span>{r.name}{r.archived ? ' (archived)' : ''}{r.kind === 'basic' && <span className="kit-tag">Basic</span>}{(!!r.totalMinutes || r.rating?.average != null) && <small>{[r.totalMinutes ? minutesLabel(r.totalMinutes) : '', r.rating?.average != null ? `★ ${r.rating.average}` : ''].filter(Boolean).join(' · ')}</small>}</span>
+          <span>{r.archived ? t('{name} (archived)', { name: r.name }) : r.name}{r.kind === 'basic' && <span className="kit-tag">{t('Basic')}</span>}{(!!r.totalMinutes || r.rating?.average != null) && <small>{[r.totalMinutes ? minutesLabel(r.totalMinutes) : '', r.rating?.average != null ? `★ ${r.rating.average}` : ''].filter(Boolean).join(' · ')}</small>}</span>
         </button>)}
       </div>
-      {!shown.length && <p className="state-card">No recipes match</p>}
+      {!shown.length && <p className="state-card">{t('No recipes match')}</p>}
     </div>
   </Sheet>
 }
@@ -204,17 +205,17 @@ function SwapPicker({ meal, range, recipes, onPick, onClose }: {
   const shown = meals?.filter(m => basics || !isBasic(m)) ?? null
   useEffect(() => {
     let canceled = false
-    api.getMeals(range.from, range.to).then(all => { if (!canceled) setMeals(swapCandidates(all, meal.id)) }).catch(e => { if (!canceled) setError(e instanceof Error ? e.message : 'Could not load meals.') })
+    api.getMeals(range.from, range.to).then(all => { if (!canceled) setMeals(swapCandidates(all, meal.id)) }).catch(e => { if (!canceled) setError(e instanceof Error ? e.message : t('Could not load meals.')) })
     return () => { canceled = true }
   }, [meal.id, range.from, range.to])
-  return <Sheet title={`Swap “${meal.title}” with…`} onClose={onClose}>
-    {meals?.some(isBasic) && <div className="field"><label htmlFor="swap-show">Show</label><select id="swap-show" value={basics ? 'all' : 'meals'} onChange={e => setBasics(e.target.value === 'all')}><option value="meals">Meals</option><option value="all">Meals and basics</option></select></div>}
-    {error ? <p className="field-error" role="alert">{error}</p> : !shown ? <p role="status">Loading meals…</p> : !shown.length ? <p className="state-card">No other meals planned for the rest of this week.</p> :
+  return <Sheet title={t('Swap “{name}” with…', { name: meal.title })} onClose={onClose}>
+    {meals?.some(isBasic) && <div className="field"><label htmlFor="swap-show">{t('Show')}</label><select id="swap-show" value={basics ? 'all' : 'meals'} onChange={e => setBasics(e.target.value === 'all')}><option value="meals">{t('Meals')}</option><option value="all">{t('Meals and basics')}</option></select></div>}
+    {error ? <p className="field-error" role="alert">{error}</p> : !shown ? <p role="status">{t('Loading meals…')}</p> : !shown.length ? <p className="state-card">{t('No other meals planned for the rest of this week.')}</p> :
       <div className="sheet-links">{shown.map(m => {
         const recipe = recipes.find(r => r.id === m.recipeId)
         return <button key={m.id} type="button" className="sheet-link" onClick={() => onPick(m)}>
           {recipe?.imageUrl ? <RecipePhoto id={recipe.id} className="recipe-pick-thumb" /> : <CalendarIcon />}
-          <span>{m.title}<small>{mealDayLabel(m.date, { weekday: 'long' })} · {SLOT_LABEL[m.slot]}</small></span>
+          <span>{m.title}<small>{mealDayLabel(m.date, { weekday: 'long' })} · {t(SLOT_LABEL[m.slot])}</small></span>
         </button>
       })}</div>}
   </Sheet>

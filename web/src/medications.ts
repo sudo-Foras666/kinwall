@@ -2,27 +2,30 @@
 // web/test/medications.test.ts covers it.
 import { format } from 'date-fns'
 import { formatTime } from './timeFormat.ts'
+import { t, tc } from './i18n.ts'
 import type { DoseStatus, Medication, MedicationHistory, MedTime } from './types.ts'
 
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** A weekday's short name in the current language (0 = Sunday): "Mon". */
+export const weekdayShort = (i: number) => format(new Date(2026, 0, 4 + i), 'EEE') // Jan 4, 2026 is a Sunday
 export const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6]
 
 /** "Every day", "Weekdays", "Weekends" or "Mon, Wed, Fri". */
 export function daysLabel(days: number[]): string {
   const d = [...new Set(days)].sort((a, b) => a - b).join()
-  if (d === '0,1,2,3,4,5,6') return 'Every day'
-  if (d === '1,2,3,4,5') return 'Weekdays'
-  if (d === '0,6') return 'Weekends'
-  return [...new Set(days)].sort((a, b) => a - b).map(i => WEEKDAYS[i]).join(', ')
+  if (d === '0,1,2,3,4,5,6') return t('Every day')
+  if (d === '1,2,3,4,5') return t('Weekdays')
+  if (d === '0,6') return t('Weekends')
+  return [...new Set(days)].sort((a, b) => a - b).map(weekdayShort).join(', ')
 }
 
 /** A dose time in a schedule: "8:00 AM", or "When I start my day (by 12:00 PM)". */
-export const timeLabel = (t: MedTime) => (typeof t === 'string' ? formatTime(t) : `When I start my day (by ${formatTime(t.latest)})`)
+export const timeLabel = (x: MedTime) => (typeof x === 'string' ? formatTime(x) : t('When I start my day (by {time})', { time: formatTime(x.latest) }))
 
 /** A dose's time on a card or the person page: "8:00 AM", "When you start your day", or "Started at 9:40 AM". */
 export function doseTimeLabel(d: { time: string; startedAt: string | null }): string {
   if (d.time !== 'wake') return formatTime(d.time)
-  return d.startedAt ? `Started at ${formatTime(new Date(d.startedAt))}` : 'When you start your day'
+  return d.startedAt ? t('Started at {time}', { time: formatTime(new Date(d.startedAt)) }) : t('When you start your day')
 }
 
 /** Should this device tell the server its person's day started (POST /api/members/{id}/day-started)?
@@ -35,20 +38,20 @@ export function dayStartDue(d: { medications: boolean; parentDevice: boolean; ow
 
 /** "8:00 AM and 8:30 PM · Every day", plus the course when it has one (" · Until Mon, Oct 5"). */
 export function scheduleLabel(m: Pick<Medication, 'times' | 'days'> & Partial<Pick<Medication, 'endDate' | 'totalDoses' | 'dosesLeft'>>): string {
-  const t = m.times.map(timeLabel)
+  const times = m.times.map(timeLabel)
   const course = courseLabel({ endDate: m.endDate ?? null, totalDoses: m.totalDoses ?? null, dosesLeft: m.dosesLeft ?? null })
-  return `${t.length > 1 ? `${t.slice(0, -1).join(', ')} and ${t.at(-1)}` : t[0]} · ${daysLabel(m.days)}${course ? ` · ${course}` : ''}`
+  return `${times.length > 1 ? t('{list} and {last}', { list: times.slice(0, -1).join(', '), last: times.at(-1)! }) : times[0]} · ${daysLabel(m.days)}${course ? ` · ${course}` : ''}`
 }
 
 /** A course (e.g. an antibiotic): "Until Mon, Oct 5", "7 of 20 doses left", "Done: all 20 doses taken", or ''. */
 export function courseLabel(m: Pick<Medication, 'endDate' | 'totalDoses' | 'dosesLeft'>): string {
-  if (m.totalDoses != null) return m.dosesLeft === 0 ? `Done: all ${m.totalDoses} doses taken` : `${m.dosesLeft ?? m.totalDoses} of ${m.totalDoses} doses left`
-  return m.endDate ? `Until ${format(new Date(`${m.endDate}T12:00:00`), 'EEE, MMM d')}` : ''
+  if (m.totalDoses != null) return m.dosesLeft === 0 ? t('Done: all {total} doses taken', { total: m.totalDoses }) : t('{left} of {total} doses left', { left: m.dosesLeft ?? m.totalDoses, total: m.totalDoses })
+  return m.endDate ? t('Until {date}', { date: format(new Date(`${m.endDate}T12:00:00`), t('EEE, MMM d')) }) : ''
 }
 
 /** What a Take now card says: the medicine where names show, "Meds" on a shared screen without them. */
 export function cardLabel(d: { name: string | null; dose: string | null }): string {
-  if (!d.name) return 'Meds'
+  if (!d.name) return t('Meds')
   return d.dose ? `${d.name} · ${d.dose}` : d.name
 }
 
@@ -61,10 +64,10 @@ export const STATUS: Record<DoseStatus, { emoji: string; label: string }> = {
 }
 /** The person page's catch-up button for a dose: "Taken" while it's due, "Taken late" once it's past
  *  its late window ("Not marked"), null when it's marked or still to come. */
-export const catchUpLabel = (s: DoseStatus): string | null => (s === 'due' ? 'Taken' : s === 'missed' ? 'Taken late' : null)
+export const catchUpLabel = (s: DoseStatus): string | null => (s === 'due' ? t('Taken') : s === 'missed' ? t('Taken late') : null)
 
 /** What a marked dose says: "Taken late" when it was taken after its late window closed. */
-export const statusLabel = (d: { status: DoseStatus; late: boolean }) => (d.status === 'taken' && d.late ? 'Taken late' : STATUS[d.status].label)
+export const statusLabel = (d: { status: DoseStatus; late: boolean }) => tc('dose', d.status === 'taken' && d.late ? 'Taken late' : STATUS[d.status].label)
 
 /** Taken this long after a dose's time asks "When did you take it?" (Just now, At its time, Earlier…);
  *  sooner, the Take now card keeps one tap. */
@@ -99,7 +102,7 @@ const CHEERS = [
 ]
 /** A random cheer for Taken ("🚀 Leo for the win!"), never the same as the last one shown. */
 export function cheerLine(name: string, last?: string, random = Math.random): string {
-  const pick = () => CHEERS[Math.floor(random() * CHEERS.length)].replace('{name}', name)
+  const pick = () => t(CHEERS[Math.floor(random() * CHEERS.length)], { name })
   let line = pick()
   for (let i = 0; i < 5 && line === last; i++) line = pick()
   return line
