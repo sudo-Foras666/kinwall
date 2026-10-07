@@ -10,6 +10,7 @@ import { retryBoot } from './appUpdate.ts'
 import { applyScreenScale } from './screenScale.ts'
 import { watchKeyboard } from './keyboard.ts'
 import { setLang, startLang, t } from './i18n.ts'
+import './dateLocale.ts'
 markNativeApp()
 setLang(startLang()) // App switches to the owner's own once members load (i18n.ts)
 window.addEventListener(IMPORT_CONTACTS_EVENT, e => { receiveSharedContacts((e as CustomEvent).detail) })
