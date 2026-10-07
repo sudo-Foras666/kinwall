@@ -10,6 +10,7 @@ import { useDialog } from './dialog.tsx'
 import { todayKeyInTz, zonedDayKey } from './date.ts'
 import { formatTime } from './timeFormat.ts'
 import { Face } from './Face'
+import { intlLocale } from './i18n.ts'
 
 // Read state is per device, like the other device prefs: everything newer than this is unread.
 const SEEN_KEY = 'kinwall.notificationsSeenAt'
@@ -32,12 +33,12 @@ const KIND_ICON: Record<AppNotification['kind'], string> = { reminder: '🔔', s
 // The server says per note whether this key may remove it; an older server doesn't, so then fall back to the old guess.
 const canRemove = (n: AppNotification, isAdmin: boolean) => n.removable ?? (isAdmin || n.kind === 'privacy')
 
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' })
+const rtf = () => new Intl.RelativeTimeFormat(intlLocale(), { numeric: 'auto', style: 'short' })
 function relTime(iso: string, tz: string): string {
   const min = Math.round((Date.now() - Date.parse(iso)) / 60000)
   if (min < 1) return 'just now'
-  if (min < 60) return rtf.format(-min, 'minute')
-  if (zonedDayKey(iso, tz) === todayKeyInTz(tz)) return rtf.format(-Math.round(min / 60), 'hour')
+  if (min < 60) return rtf().format(-min, 'minute')
+  if (zonedDayKey(iso, tz) === todayKeyInTz(tz)) return rtf().format(-Math.round(min / 60), 'hour')
   return formatTime(iso, tz)
 }
 
@@ -47,7 +48,7 @@ function dayLabel(dayKey: string, tz: string): string {
   if (dayKey === today) return 'Today'
   if (dayKey === yesterday) return 'Yesterday'
   const [y, m, d] = dayKey.split('-').map(Number)
-  return new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)))
+  return new Intl.DateTimeFormat(intlLocale(), { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(y, m - 1, d)))
 }
 
 // Deep links are the same ones a push opens ('/#/calendar?event=…', '/chores', '/'); the app

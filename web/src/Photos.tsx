@@ -11,6 +11,7 @@ import Sheet from './Sheet.tsx'
 import { preparePhoto, PhotoFormatError } from './photos.ts'
 import type { Photo, PhotoQuota } from './types.ts'
 import { ChipFace } from './Face'
+import { intlLocale } from './i18n.ts'
 
 const mb = (b: number) => { const v = b / 1048576; return `${v < 10 && v > 0 ? v.toFixed(1).replace(/\.0$/, '') : Math.round(v)} MB` }
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
@@ -197,7 +198,7 @@ function PhotoSheet({ photo, isAdmin, members, onClose, onChanged, index, count,
           </div>
         </div>
       </> : owner && <p className="field-hint">For {owner.avatar} {owner.name}</p>}
-      <p className="field-hint">Added {new Date(photo.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · {photo.width}×{photo.height} · {Math.round(photo.bytes / 1024)} KB</p>
+      <p className="field-hint">Added {new Date(photo.createdAt).toLocaleDateString(intlLocale(), { dateStyle: 'medium' })} · {photo.width}×{photo.height} · {Math.round(photo.bytes / 1024)} KB</p>
     </Sheet>
   )
 }

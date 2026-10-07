@@ -52,6 +52,7 @@ import { Brand } from './Brand.tsx'
 import { filterSettings, matchesAll, queryWords, readOpen, writeOpen } from './settingsSearch.ts'
 import { Face } from './Face'
 import { PictureSheet } from './MemberPicture.tsx'
+import { browserLang, intlLocale, LANGUAGES, pickLang, t, type Lang } from './i18n.ts'
 
 // Mirrors BusEventType in server/src/bus.ts.
 const BUS_EVENTS = ['member.changed', 'calendar.changed', 'calendar.synced', 'events.changed', 'chore.changed', 'chore.completed', 'chore.uncompleted', 'chore.pending', 'chore.rejected', 'checkin.completed', 'tempcheck.changed', 'list.changed', 'list.item.changed', 'category.changed', 'settings.changed', 'sticker.changed', 'reward.changed', 'reward.redeemed', 'reward.approved', 'reward.declined', 'reward.given', 'points.awarded', 'points.removed', 'recipe.changed', 'meal.changed', 'photo.changed', 'tracker.changed', 'newscast.posted', 'newscast.changed', 'contact.changed', 'contact.category.changed', 'plugin.action', 'display.paired', 'display.night_screen']
@@ -145,7 +146,7 @@ export default function SettingsView() {
   // Display keys get the everyday tabs; the admin-only ones (calendar accounts, displays,
   // passkeys, API keys, webhooks) aren't rendered at all.
   const isDisplay = me.scope === 'display'
-  const tabs = SETTINGS_TABS.filter(t => !t.admin || !isDisplay)
+  const tabs = SETTINGS_TABS.filter(x => !x.admin || !isDisplay).map(x => ({ ...x, label: t(x.label) }))
   const current = tabs.some(t => t.key === tab) ? tab : 'general'
 
   // Search hides what doesn't match, straight in the page, and again whenever the page changes.
@@ -166,15 +167,16 @@ export default function SettingsView() {
     <div className="content scroll-y">
       <div className="settings-scroll">
         <div className="settings-tabs">
-          <Segmented tabs idBase="settings-tab" label="Settings sections" value={current} onChange={pickTab} options={tabs} />
+          <Segmented tabs idBase="settings-tab" label={t('Settings sections')} value={current} onChange={pickTab} options={tabs} />
         </div>
         <div className="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${current}`} ref={panelRef}>
         {current === 'general' && <AccordionCtx.Provider value={{ open, toggle, words, shut: searchShut }}>
           <SettingsSearch query={query} onChange={search} />
-          {words.length > 0 && hits === 0 && <p className="settings-search-none" role="status">No settings match “{query.trim()}”</p>}
+          {words.length > 0 && hits === 0 && <p className="settings-search-none" role="status">{t('No settings match “{query}”', { query: query.trim() })}</p>}
+          <LanguageSection />
           {/* Family settings are for parent devices; a wall screen or kid's device only has its own. */}
           {!isDisplay && (
-            <SettingsGroup title="For the whole family" sub="Every screen and phone in the household uses these.">
+            <SettingsGroup title={t('For the whole family')} sub={t('Every screen and phone in the household uses these.')}>
               <GeneralSection settings={settings} onSaved={reloadCore} toast={toast} isDisplay={false} />
               <WeatherSection settings={settings} onSaved={reloadCore} toast={toast} />
               <TidbitsSection settings={settings} onSaved={reloadCore} toast={toast} />
@@ -184,7 +186,7 @@ export default function SettingsView() {
               <NightSection settings={settings} onSaved={reloadCore} toast={toast} />
             </SettingsGroup>
           )}
-          <SettingsGroup title="Only on this device" sub="Saved on this screen or phone. Other devices aren't affected.">
+          <SettingsGroup title={t('Only on this device')} sub={t("Saved on this screen or phone. Other devices aren't affected.")}>
             {isDisplay ? <ThisDisplaySection keyName={me.keyName} /> : <ThisDisplaySection />}
             <DeviceAppearanceSection />
             <TimeCuesSection />
@@ -221,11 +223,11 @@ export default function SettingsView() {
         </div>
         <div className="settings-version">
           <Brand />
-          {me.version && <div>Version {me.version}</div>}
+          {me.version && <div>{t('Version {version}', { version: me.version })}</div>}
           <div className="settings-version-links">
-            <a className="text-link" href="https://docs.kinwall.family" target="_blank" rel="noopener">Help &amp; docs</a>
-            <a className="text-link" href="https://github.com/JohnDuprey/kinwall" target="_blank" rel="noopener">Source code</a>
-            <a className="text-link" href="https://docs.kinwall.family/contributing/credits" target="_blank" rel="noopener">Open-source credits</a>
+            <a className="text-link" href="https://docs.kinwall.family" target="_blank" rel="noopener">{t('Help & docs')}</a>
+            <a className="text-link" href="https://github.com/JohnDuprey/kinwall" target="_blank" rel="noopener">{t('Source code')}</a>
+            <a className="text-link" href="https://docs.kinwall.family/contributing/credits" target="_blank" rel="noopener">{t('Open-source credits')}</a>
           </div>
         </div>
       </div>
@@ -1221,6 +1223,39 @@ function SchemeSheet({ draft, isNew, onClose, onSave, onDelete }: {
   )
 }
 
+/** The app's language. On someone's own device it's saved in their profile (it follows them to
+ * every device of theirs); on a shared device or a wall screen, on this device only. */
+function LanguageSection() {
+  const { members, meMemberId, toast, reloadCore } = useApp()
+  const device = useDeviceAppearance()
+  const me = members.find(m => m.id === meMemberId)
+  const [saving, setSaving] = useState(false)
+  const name = (l: Lang) => LANGUAGES.find(x => x.key === l)!.label
+  const auto = me ? pickLang(null, device.language) : browserLang() ?? 'en'
+  const pick = async (value: string) => {
+    const next = LANGUAGES.find(l => l.key === value)?.key ?? null
+    if (!me) { setDeviceAppearance({ ...device, language: next ?? undefined }); return }
+    setSaving(true)
+    try { await api.setMemberLanguage(me.id, next); reloadCore() } catch (e) { toast(e instanceof ApiError ? e.message : t('Could not save the language'), true) } finally { setSaving(false) }
+  }
+  return (
+    <Section id="language" title={t('Language')} keywords={['Language', 'Sprache', 'English', 'Deutsch']}>
+      <div className="settings-row">
+        <div>
+          <label className="settings-row-label" htmlFor="language-select">{t('Language')}</label>
+          <div className="settings-row-sub">{me
+            ? t("Saved in {name}'s profile, so it follows them to all their devices.", { name: me.name })
+            : t('Saved on this device only. A device that belongs to someone uses their language.')}</div>
+        </div>
+        <select id="language-select" className="settings-select" value={(me ? me.language : device.language) ?? ''} disabled={saving} onChange={e => pick(e.target.value)}>
+          <option value="">{t('Automatic ({language})', { language: name(auto) })}</option>
+          {LANGUAGES.map(l => <option key={l.key} value={l.key} lang={l.key}>{l.label}</option>)}
+        </select>
+      </div>
+    </Section>
+  )
+}
+
 function DeviceAppearanceSection() {
   const { settings } = useApp()
   const summary = deviceChips(settings, useDeviceAppearance())
@@ -1982,74 +2017,85 @@ function MemberEditSheet({ member, canDelete, onClose, onSaved, toast }: { membe
   const [grownUp, setGrownUp] = useState(!!member?.grownUp)
   const [needsApproval, setNeedsApproval] = useState(!!member?.needsApproval)
   const [tempCheck, setTempCheck] = useState<TempCheckSettings>({ ...TEMP_CHECK_OFF, ...member?.tempCheck })
+  const [language, setLanguage] = useState<Lang | null>(member?.language ?? null)
   const save = async () => {
     if (!name.trim() || !isValidAvatar(avatar)) return
     try {
       // Transition reminders are a parent's setting: only sent from a device that may manage members.
-      const extra = canDelete ? { transitionReminders: transitions, grownUp, needsApproval: needsApproval && !grownUp, tempCheck } : {}
+      const extra = canDelete ? { transitionReminders: transitions, grownUp, needsApproval: needsApproval && !grownUp, tempCheck, language } : {}
       if (member) await api.updateMember(member.id, { name: name.trim(), color, avatar, birthday, ...extra })
       else await api.createMember({ name: name.trim(), color, avatar, birthday, ...extra })
       onSaved()
     } catch (e) {
       // Refused (e.g. only Alex can mark Alex as a kid): nothing was saved, so the switch shows what's true again.
       if (member && e instanceof ApiError && e.status === 403) setGrownUp(!!member.grownUp)
-      toast(e instanceof ApiError ? e.message : 'Could not save member', true)
+      toast(e instanceof ApiError ? e.message : t('Could not save member'), true)
     }
   }
   const del = async () => {
     if (!member) return
-    if (!await dialog.confirm({ title: `Remove ${member.name}?`, body: 'Their chores and tags are unassigned. Their books, memories and health visits are kept under their name.', confirmLabel: 'Remove', danger: true })) return
-    try { await api.deleteMember(member.id); onSaved() } catch (e) { toast(e instanceof ApiError ? e.message : 'Could not delete member', true) }
+    if (!await dialog.confirm({ title: t('Remove {name}?', { name: member.name }), body: t('Their chores and tags are unassigned. Their books, memories and health visits are kept under their name.'), confirmLabel: t('Remove'), danger: true })) return
+    try { await api.deleteMember(member.id); onSaved() } catch (e) { toast(e instanceof ApiError ? e.message : t('Could not delete member'), true) }
   }
   return (
-    <Sheet title={member ? 'Edit member' : 'Add member'} onClose={onClose}
-      actions={<>{member && canDelete && <button className="btn btn-danger" onClick={del} aria-label="Delete"><TrashIcon width={18} height={18} /></button>}<button className="btn btn-primary" onClick={save} disabled={!name.trim() || !isValidAvatar(avatar)}>Save</button></>}>
-      <div className="field"><label>Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} autoFocus={!member} /></div>
+    <Sheet title={member ? t('Edit member') : t('Add member')} onClose={onClose}
+      actions={<>{member && canDelete && <button className="btn btn-danger" onClick={del} aria-label={t('Delete')}><TrashIcon width={18} height={18} /></button>}<button className="btn btn-primary" onClick={save} disabled={!name.trim() || !isValidAvatar(avatar)}>{t('Save')}</button></>}>
+      <div className="field"><label>{t('Name')}</label><input type="text" value={name} onChange={e => setName(e.target.value)} autoFocus={!member} /></div>
       <div className="field">
-        <label>Color</label>
+        <label>{t('Color')}</label>
         <div className="color-swatch-row">
           {MEMBER_PALETTE.map(c => <button key={c} className={`color-swatch ${color === c ? 'active' : ''}`} aria-pressed={color === c} style={{ background: c }} onClick={() => setColor(c)} aria-label={colorName(c)} />)}
-          <CustomColorSwatch value={color} presets={MEMBER_PALETTE} onChange={hex => setColor(hex)} label="Custom member color" />
+          <CustomColorSwatch value={color} presets={MEMBER_PALETTE} onChange={hex => setColor(hex)} label={t('Custom member color')} />
         </div>
         <ColorClashHint color={color} memberId={member?.id ?? null} onPick={setColor} />
       </div>
       <AvatarPicker value={avatar} onChange={setAvatar} />
       {live && (
         <div className="field">
-          <label>Picture</label>
+          <label>{t('Picture')}</label>
           <div className="picture-row">
             <Face m={{ ...live, color, avatar }} className="snap-avatar" aria-hidden="true" />
-            <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}>{live.picture ? 'Change picture' : 'Add a picture'}</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setPicking(true)}>{live.picture ? t('Change picture') : t('Add a picture')}</button>
           </div>
-          <p className="field-hint">A family photo, a drawing or a new photo, instead of the emoji. The emoji stays as the backup.</p>
+          <p className="field-hint">{t('A family photo, a drawing or a new photo, instead of the emoji. The emoji stays as the backup.')}</p>
           {picking && <PictureSheet member={live} onClose={() => setPicking(false)} />}
         </div>
       )}
       {canDelete && (
         <div className="field">
           <div className="toggle-row">
-            <label id="member-grown-up">Grown-up</label>
+            <label id="member-grown-up">{t('Grown-up')}</label>
             <button className={`switch ${grownUp ? 'on' : ''}`} role="switch" aria-checked={grownUp} aria-labelledby="member-grown-up" onClick={() => setGrownUp(v => !v)}><span className="knob" /></button>
           </div>
-          <p className="field-hint">Parents and other adults: their chores never wait for an OK.</p>
+          <p className="field-hint">{t('Parents and other adults: their chores never wait for an OK.')}</p>
+        </div>
+      )}
+      {canDelete && (
+        <div className="field">
+          <label htmlFor="member-language">{t('Language')}</label>
+          <select id="member-language" className="settings-select" value={language ?? ''} onChange={e => setLanguage(LANGUAGES.find(l => l.key === e.target.value)?.key ?? null)}>
+            <option value="">{t('Automatic (each device decides)')}</option>
+            {LANGUAGES.map(l => <option key={l.key} value={l.key} lang={l.key}>{l.label}</option>)}
+          </select>
+          <p className="field-hint">{t('Kinwall shows itself in this language on their own devices. They can change it there too.')}</p>
         </div>
       )}
       <div className="field">
-        <label htmlFor="member-birthday">Birthday <span className="settings-row-sub">(optional — shows 🎂 in snapshots)</span></label>
+        <label htmlFor="member-birthday">{t('Birthday')} <span className="settings-row-sub">{t('(optional — shows 🎂 in snapshots)')}</span></label>
         <input id="member-birthday" type="date" value={bday} max={noYear ? undefined : new Date().toISOString().slice(0, 10)} onChange={e => setBday(e.target.value)} />
       </div>
       {bday && (
         <div className="toggle-row">
-          <label id="member-birthday-noyear">I don't know the year</label>
+          <label id="member-birthday-noyear">{t("I don't know the year")}</label>
           <button className={`switch ${noYear ? 'on' : ''}`} role="switch" aria-checked={noYear} aria-labelledby="member-birthday-noyear" onClick={() => setNoYear(v => !v)}><span className="knob" /></button>
         </div>
       )}
       {canDelete && !grownUp && <>
       <div className="toggle-row">
-        <label id="member-needs-approval">Their chores need a parent's OK</label>
+        <label id="member-needs-approval">{t("Their chores need a parent's OK")}</label>
         <button className={`switch ${needsApproval ? 'on' : ''}`} role="switch" aria-checked={needsApproval} aria-labelledby="member-needs-approval" onClick={() => setNeedsApproval(v => !v)}><span className="knob" /></button>
       </div>
-      <p className="field-hint">Chores they tick on a wall screen or their own device wait for a parent to approve before the points count. A chore's own setting wins.</p>
+      <p className="field-hint">{t("Chores they tick on a wall screen or their own device wait for a parent to approve before the points count. A chore's own setting wins.")}</p>
       </>}
       {canDelete && <TransitionRemindersField name={name.trim() || 'this person'} value={transitions} onChange={setTransitions} />}
       {canDelete && checkIns && <TempCheckField member={member} name={name.trim() || 'this person'} value={tempCheck} onChange={setTempCheck} toast={toast} />}
@@ -3337,13 +3383,13 @@ function YourDataSection({ hostPortalUrl, toast, onImported }: { hostPortalUrl?:
   )
 }
 
-const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+const relativeTime = () => new Intl.RelativeTimeFormat(intlLocale(), { numeric: 'auto' })
 function timeAgo(iso: string): string {
   const s = (new Date(iso).getTime() - Date.now()) / 1000
   for (const [unit, secs] of [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]] as const) {
-    if (Math.abs(s) >= secs) return relativeTime.format(Math.round(s / secs), unit)
+    if (Math.abs(s) >= secs) return relativeTime().format(Math.round(s / secs), unit)
   }
-  return relativeTime.format(0, 'minute')
+  return relativeTime().format(0, 'minute')
 }
 
 /** The family's security log: the latest event here, everything in a sheet (SecurityActivitySheet).

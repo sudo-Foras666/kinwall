@@ -46,6 +46,7 @@ import Sheet from './Sheet.tsx'
 import { LeaveByLiveActivity } from './NowNext.tsx'
 import { MedicationLiveActivity } from './TakeNow.tsx'
 import { formatTime, resolveHour12, setHour12 } from './timeFormat.ts'
+import { intlLocale, pickLang, rememberLang, setLang, t } from './i18n.ts'
 import { dateKey } from './date.ts'
 import { nightFieldsFor, nightSources } from './saverSources.ts'
 import { onMinute } from './minuteTick.ts'
@@ -106,7 +107,7 @@ function Nav({ tab, mode, items, toApprove = 0, rewardRequests = 0 }: { tab: str
   // too), and the reward requests alone on Rewards.
   const count = (key: string) => key === 'chores' ? toApprove : key === 'rewards' ? rewardRequests : 0
   const badgeFor = (n: number) => n > 0
-    ? <><span className="nav-badge" aria-hidden="true">{n > 9 ? '9+' : n}</span><span className="sr-only">, {n} to approve</span></>
+    ? <><span className="nav-badge" aria-hidden="true">{n > 9 ? '9+' : n}</span><span className="sr-only">{t(', {n} to approve', { n })}</span></>
     : null
   const badge = (key: string) => badgeFor(count(key))
   if (mode === 'bottom') {
@@ -115,23 +116,23 @@ function Nav({ tab, mode, items, toApprove = 0, rewardRequests = 0 }: { tab: str
     const rest = overflow ? items.slice(MAX_TABS - 1) : []
     const inRest = rest.some(i => i.key === tab)
     return (
-      <nav className="tab-bar" aria-label="Main">
+      <nav className="tab-bar" aria-label={t('Main')}>
         {shown.map(item => (
-          <a key={item.key} href={item.href} className={`tab-btn ${tab === item.key ? 'active' : ''}`} aria-current={tab === item.key ? 'page' : undefined}><item.Icon /> {item.label}{badge(item.key)}</a>
+          <a key={item.key} href={item.href} className={`tab-btn ${tab === item.key ? 'active' : ''}`} aria-current={tab === item.key ? 'page' : undefined}><item.Icon /> {t(item.label)}{badge(item.key)}</a>
         ))}
         {overflow && (
           <button className={`tab-btn ${inRest ? 'active' : ''}`} aria-haspopup="dialog" aria-expanded={more} onClick={() => setMore(true)}
-            aria-label={inRest ? `More, showing ${rest.find(i => i.key === tab)!.label}` : 'More'}>
-            <MoreIcon /> More{badgeFor(Math.max(0, ...rest.map(i => count(i.key))))}
+            aria-label={inRest ? t('More, showing {tab}', { tab: t(rest.find(i => i.key === tab)!.label) }) : t('More')}>
+            <MoreIcon /> {t('More')}{badgeFor(Math.max(0, ...rest.map(i => count(i.key))))}
           </button>
         )}
         {more && (
-          <Sheet title="More" onClose={() => setMore(false)}>
+          <Sheet title={t('More')} onClose={() => setMore(false)}>
             <div className="more-list">
               {rest.map(item => (
                 <a key={item.key} href={item.href} className={`more-row ${tab === item.key ? 'active' : ''}`} aria-current={tab === item.key ? 'page' : undefined}
                   onClick={() => setMore(false)}>
-                  <item.Icon /> <span>{item.label}</span>{badge(item.key)}
+                  <item.Icon /> <span>{t(item.label)}</span>{badge(item.key)}
                 </a>
               ))}
             </div>
@@ -141,9 +142,9 @@ function Nav({ tab, mode, items, toApprove = 0, rewardRequests = 0 }: { tab: str
     )
   }
   return (
-    <nav className={`nav-rail nav-rail-${mode}`} aria-label="Main">
+    <nav className={`nav-rail nav-rail-${mode}`} aria-label={t('Main')}>
       {items.map(item => (
-        <a key={item.key} href={item.href} className={`nav-rail-btn ${tab === item.key ? 'active' : ''}`} aria-current={tab === item.key ? 'page' : undefined}><item.Icon /><span>{item.label}</span>{badge(item.key)}</a>
+        <a key={item.key} href={item.href} className={`nav-rail-btn ${tab === item.key ? 'active' : ''}`} aria-current={tab === item.key ? 'page' : undefined}><item.Icon /><span>{t(item.label)}</span>{badge(item.key)}</a>
       ))}
     </nav>
   )
@@ -373,7 +374,7 @@ function PinKeypad({ onWake, onIdle }: { onWake: () => void; onIdle: () => void 
 function clockStrings(now: Date, tz: string | undefined) {
   return {
     time: formatTime(now, tz),
-    date: new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }).format(now),
+    date: new Intl.DateTimeFormat(intlLocale(), { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }).format(now),
   }
 }
 
@@ -1183,6 +1184,11 @@ function AppRoutes({ urlKey }: { urlKey: string | null }) {
   setHour12(resolveHour12(settings?.timeFormat, device.timeFormat)) // before anything below formats a time
   const focusMember = members.find(m => m.id === (ownerLocks ? owner : device.focusMemberId))
   const meMemberId = members.some(m => m.id === owner) ? owner : null
+  // The owner's language (their profile), else this device's, else the browser's (i18n.ts). Before
+  // anything below renders text; the shell is keyed on it, so memoized screens redraw too.
+  const language = pickLang(members.find(m => m.id === meMemberId)?.language, device.language)
+  setLang(language)
+  useEffect(() => { rememberLang(language) }, [language])
   const effectiveMemberId = focusMember?.id ?? selectedMemberId
   const setMemberId = focusMember ? () => {} : setSelectedMemberId
 
@@ -1256,7 +1262,7 @@ function AppRoutes({ urlKey }: { urlKey: string | null }) {
   }, [hasKey, builtInActivities, pollTick, manualTick])
   const redirect = settings && featureRedirect(settings, section, sub, pluginsOn)
   useEffect(() => { if (redirect) location.replace(redirect) }, [redirect])
-  const tabLabel = section === 'profile' ? 'Profile' : section === 'journal' ? 'Journal' : section === 'insights' ? 'Insights' : section === 'medications' ? 'Medicines' : section === 'activities' && sub === 'paint' ? 'Paint' : section === 'activities' && sub === 'stickers' ? 'Sticker book' : section === 'activities' && sub === 'photos' ? 'Photos' : NAV_ITEMS.find(i => i.key === section)?.label ?? 'Home'
+  const tabLabel = t(section === 'profile' ? 'Profile' : section === 'journal' ? 'Journal' : section === 'insights' ? 'Insights' : section === 'medications' ? 'Medicines' : section === 'activities' && sub === 'paint' ? 'Paint' : section === 'activities' && sub === 'stickers' ? 'Sticker book' : section === 'activities' && sub === 'photos' ? 'Photos' : NAV_ITEMS.find(i => i.key === section)?.label ?? 'Home')
   const inApp = hasKey && !!settings && !wizardActive && (section === 'profile' || section === 'journal' || section === 'insights' || section === 'medications' || NAV_ITEMS.some(i => i.key === section))
   // "Chores · Duprey Family": the family, not the product, is what tells tabs and home-screen icons apart.
   const familyName = settings?.familyName?.trim()
@@ -1266,7 +1272,7 @@ function AppRoutes({ urlKey }: { urlKey: string | null }) {
     return (
       <div className={`gate-screen boot-screen${inNativeApp() ? ' native' : ''}`} style={bootMarkStyle()} role="main">
         <Brand />
-        <div className="boot-below"><div className="gate-loading" role="status"><span className="spinner" aria-hidden="true" /><span className="sr-only">Loading…</span></div></div>
+        <div className="boot-below"><div className="gate-loading" role="status"><span className="spinner" aria-hidden="true" /><span className="sr-only">{t('Loading…')}</span></div></div>
       </div>
     )
   }
@@ -1300,7 +1306,7 @@ function AppRoutes({ urlKey }: { urlKey: string | null }) {
     return (
       <div className={`gate-screen boot-screen${inNativeApp() ? ' native' : ''}`} style={bootMarkStyle()} role="main">
         <Brand />
-        <div className="boot-below">{loadError ? <div className="state-card">Could not reach the server. Retrying…</div> : <div className="gate-loading" role="status"><span className="spinner" aria-hidden="true" /><span className="sr-only">Loading…</span></div>}</div>
+        <div className="boot-below">{loadError ? <div className="state-card">{t('Could not reach the server. Retrying…')}</div> : <div className="gate-loading" role="status"><span className="spinner" aria-hidden="true" /><span className="sr-only">{t('Loading…')}</span></div>}</div>
       </div>
     )
   }
@@ -1316,9 +1322,9 @@ function AppRoutes({ urlKey }: { urlKey: string | null }) {
       reloadCore: () => setManualTick(t => t + 1),
       toast: (msg, persist = false) => setToastMsg({ msg, persist }),
     }}>
-      <div className={`app-shell ${navMode !== 'bottom' ? `app-shell-rail app-shell-rail-${navMode}` : ''}`}>
+      <div key={language} className={`app-shell ${navMode !== 'bottom' ? `app-shell-rail app-shell-rail-${navMode}` : ''}`}>
         {/* A button, not href="#main": the hash is the router. */}
-        <button className="skip-link" onClick={() => document.getElementById('main')?.focus()}>Skip to content</button>
+        <button className="skip-link" onClick={() => document.getElementById('main')?.focus()}>{t('Skip to content')}</button>
         {navMode === 'left' && <Nav tab={navTab} mode={navMode} items={nav} toApprove={toApprove} rewardRequests={rewardRequests} />}
         <div className="main-col">
           <Header settings={settings} members={focusMember ? [focusMember] : members} selectedMemberId={effectiveMemberId} isAdmin={scope === 'admin'} wall={wall} />
@@ -1331,12 +1337,12 @@ function AppRoutes({ urlKey }: { urlKey: string | null }) {
         {navMode === 'right' && <Nav tab={navTab} mode={navMode} items={nav} toApprove={toApprove} rewardRequests={rewardRequests} />}
         <SaveIndicator />
         {toastMsg && (toastMsg.persist
-          ? <button className="toast" onClick={() => setToastMsg(null)} aria-label={`${toastMsg.msg} (dismiss)`}>{toastMsg.msg} <span aria-hidden="true">✕</span></button>
+          ? <button className="toast" onClick={() => setToastMsg(null)} aria-label={t('{message} (dismiss)', { message: toastMsg.msg })}>{toastMsg.msg} <span aria-hidden="true">✕</span></button>
           : <div className="toast">{toastMsg.msg}</div>)}
-        {MOCK && inNativeApp() && <div className="demo-bar" role="status">Demo — nothing is saved.<button type="button" className="demo-bar-leave" onClick={tellAppLeaveDemo}>Leave demo</button></div>}
-        {MOCK && !inNativeApp() && !sessionStorage.getItem('kinwall.demoClean') && <div className="demo-bar" role="status">Demo — nothing is saved. Reload for a fresh copy.</div>}
+        {MOCK && inNativeApp() && <div className="demo-bar" role="status">{t('Demo — nothing is saved.')}<button type="button" className="demo-bar-leave" onClick={tellAppLeaveDemo}>{t('Leave demo')}</button></div>}
+        {MOCK && !inNativeApp() && !sessionStorage.getItem('kinwall.demoClean') && <div className="demo-bar" role="status">{t('Demo — nothing is saved. Reload for a fresh copy.')}</div>}
         {bannerMsg && <button className="toast update-banner" onClick={() => setBannerMsg(null)}>{bannerMsg}</button>}
-        {updateAvailable && <button className="toast update-banner" onClick={() => location.reload()}>Kinwall updated — tap to reload</button>}
+        {updateAvailable && <button className="toast update-banner" onClick={() => location.reload()}>{t('Kinwall updated — tap to reload')}</button>}
         {isPhone && <InstallNudge />}
         {settings.features.lists && <PinnedChecklist />}
         <QuietOverlay settings={settings} wall={wall} remote={nightScreen} />

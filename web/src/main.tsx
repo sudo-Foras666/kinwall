@@ -9,7 +9,9 @@ import { homeAlias } from './hashQuery.ts'
 import { retryBoot } from './appUpdate.ts'
 import { applyScreenScale } from './screenScale.ts'
 import { watchKeyboard } from './keyboard.ts'
+import { setLang, startLang } from './i18n.ts'
 markNativeApp()
+setLang(startLang()) // App switches to the owner's own once members load (i18n.ts)
 window.addEventListener(IMPORT_CONTACTS_EVENT, e => { receiveSharedContacts((e as CustomEvent).detail) })
 
 // Android / Chrome / Edge offer to install once the page qualifies, often before the App chunk

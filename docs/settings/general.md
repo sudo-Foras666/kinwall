@@ -9,6 +9,10 @@ Each card is folded to its title (and its summary, when it has one); tap the tit
 
 The Kinwall version ("Kinwall v…") shows at the bottom.
 
+## Language
+
+Above both groups, on every device: **English**, **Deutsch** or **Automatic**. On a device that belongs to someone it's saved in their profile and follows them to all their devices; on a wall screen or shared device it's saved on that device only. See [Profiles → Language](../using/profiles.md#language).
+
 ## For the whole family
 
 ### Household

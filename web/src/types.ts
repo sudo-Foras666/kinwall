@@ -1,3 +1,4 @@
+import type { Lang } from './i18n.ts'
 import type { CalendarFilter } from './calendarFilter.ts'
 import type { BoardPreset } from './boardLayout.ts'
 import type { DeviceKind } from './wallScreen.ts'
@@ -204,6 +205,7 @@ export interface Member {
   tempCheck?: TempCheckSettings // their daily questions (a parent sets them)
   todayGoal?: string | null // their Temp check goal for today
   privateJournal?: { on: boolean; allowed: boolean } // new entries private (only their own devices read the words); allowed: grown-ups always, kids when a parent allows it
+  language?: Lang | null // the app's language on their own devices; null = each device decides (i18n.ts)
 }
 
 export interface TempCheckSettings {

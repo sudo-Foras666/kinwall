@@ -21,6 +21,7 @@ import { preparePhoto } from './photos.ts'
 import { api, ApiError } from './api.ts'
 import { beginStroke, endStroke, floodFill, packRGBA, PAPER, parseSizes, SIZE_NAMES, SIZES, sizeFor, STAMPS, strokeTo, drawStroke, type Brush, type Stroke } from './paintTools.ts'
 import ColoringBook from './ColoringBook.tsx'
+import { intlLocale } from './i18n.ts'
 
 // The Colors sheet, one row each: bright, pastel (the member palette), dark, skin tones and browns,
 // grays and extras. Names are what screen readers say.
@@ -106,7 +107,7 @@ async function makeThumb(png: Blob) {
 }
 
 const isIOS = () => /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-const fmtDate = (t: number, long = false) => new Date(t).toLocaleDateString(undefined, long ? { year: 'numeric', month: 'long', day: 'numeric' } : { month: 'short', day: 'numeric' })
+const fmtDate = (t: number, long = false) => new Date(t).toLocaleDateString(intlLocale(), long ? { year: 'numeric', month: 'long', day: 'numeric' } : { month: 'short', day: 'numeric' })
 
 export default function Paint() {
   const { members, toast, selectedMemberId } = useApp()

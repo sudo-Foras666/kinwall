@@ -7,17 +7,18 @@ import { readableOn } from './color.ts'
 import { announce } from './a11y.tsx'
 import { useDialog } from './dialog.tsx'
 import { Face, ChipFace } from './Face'
+import { intlLocale } from './i18n.ts'
 
 const POST_AS_KEY = 'kinwall.notePostAs' // member the last note was posted as
 const MAX = 2000
 
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' })
+const rtf = () => new Intl.RelativeTimeFormat(intlLocale(), { numeric: 'auto', style: 'short' })
 function relTime(iso: string): string {
   const min = Math.round((Date.now() - Date.parse(iso)) / 60000)
   if (min < 1) return 'just now'
-  if (min < 60) return rtf.format(-min, 'minute')
-  if (min < 24 * 60) return rtf.format(-Math.round(min / 60), 'hour')
-  if (min < 7 * 24 * 60) return rtf.format(-Math.round(min / 1440), 'day')
+  if (min < 60) return rtf().format(-min, 'minute')
+  if (min < 24 * 60) return rtf().format(-Math.round(min / 60), 'hour')
+  if (min < 7 * 24 * 60) return rtf().format(-Math.round(min / 1440), 'day')
   return format(new Date(iso), 'MMM d')
 }
 

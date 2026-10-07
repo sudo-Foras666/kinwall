@@ -22,6 +22,7 @@ import MealQuickSheet from './MealQuickSheet.tsx'
 import type { Meal } from './meal-types.ts'
 import { leadOf, leadText } from './leadTime.ts'
 import { Face } from './Face'
+import { intlLocale } from './i18n.ts'
 
 type Range = 'day' | 'week'
 
@@ -35,7 +36,7 @@ function markSeen(memberId: string, today: string) {
 }
 
 export const dayName = (date: string, opts: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat(undefined, { ...opts, timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`))
+  new Intl.DateTimeFormat(intlLocale(), { ...opts, timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`))
 
 /** Deep links: close the sheet, then go where a tap in the app would. */
 function go(hash: string, close: () => void) { close(); location.hash = hash }

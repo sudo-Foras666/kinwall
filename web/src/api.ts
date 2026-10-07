@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { Lang } from './i18n.ts'
 import { remoteNightKey, type DeviceKind, type RemoteNight } from './wallScreen.ts'
 import { tellAppSignedIn, tellAppSignedOut } from './native.ts'
 import { changedAreas, type RevAnswer } from './revs.ts'
@@ -374,6 +375,8 @@ export const api = {
   updateMember: (id: string, body: Partial<Member>, useAdmin?: boolean) => MOCK ? mock.updateMember(id, body) : patch<Member>(`api/members/${id}`, body, useAdmin),
   deleteMember: (id: string, useAdmin?: boolean) => MOCK ? mock.deleteMember(id) : del(`api/members/${id}`, useAdmin),
   /** A kid's own device sets its own avatar; parents use updateMember. */
+  /** Someone's own device sets their own language (null: each device decides); parents may set anyone's. */
+  setMemberLanguage: (id: string, language: Lang | null) => MOCK ? mock.updateMember(id, { language }).then(() => ({ language })) : put<{ language: Lang | null }>(`api/members/${id}/language`, { language }),
   setMemberAvatar: (id: string, avatar: string) => MOCK ? mock.updateMember(id, { avatar }).then(() => ({ avatar })) : put<{ avatar: string | null }>(`api/members/${id}/avatar`, { avatar }),
   /** A profile picture (a square crop, picture.ts): parents for anyone, a kid's own device for them.
    * from: the family photo it was cropped from (a reference; the original isn't uploaded again). */

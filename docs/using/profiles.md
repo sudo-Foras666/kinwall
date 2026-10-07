@@ -36,6 +36,16 @@ Kinwall keeps only the small circle (256 pixels), stored with the family photos 
 
 With **Photos** turned off in [Features](../settings/general.md#features), **From family photos** (and drawings in the album) aren't offered, but taking or uploading a photo still works and pictures keep showing: a picture belongs to the person, not the album.
 
+## Language
+
+Kinwall comes in **English** and **Deutsch** (German). Everyone picks their own: the choice is saved in their profile on your server, so it follows them to every device of theirs (their phone, their tablet), and a wall screen or a sibling's device isn't affected.
+
+* **On your own device**: **Settings → General → Language**. A device belongs to someone when it's set under [Settings → Access](../settings/access.md); kids can pick their own language there too.
+* **Parents, for anyone**: **Settings → Family**, tap the person, then **Language**.
+* **Automatic** (the default) follows the device: a device that belongs to no one (a wall screen, a shared tablet) picks its own language under **Settings → General → Language**, saved on that device only, and otherwise uses the browser's language. Anything that isn't English or German shows in English.
+
+Dates and weekday names follow the language too. Parts of the app that aren't translated yet show in English. Things the family typed in (chore names, lists, events) stay as they were written.
+
 ## What's on it
 
 Pick **Today**, **Week**, **Month**, **Year** or **All time** at the top. Days follow the family's time zone and the week starts on the day set in [Settings → General](../settings/general.md).

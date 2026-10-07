@@ -1,6 +1,7 @@
 import { addDays, startOfWeek } from 'date-fns'
 import { dateKey } from './date.ts'
 import type { MealSlot } from './meal-types.ts'
+import { intlLocale } from './i18n.ts'
 
 export const MEAL_SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
 export const SLOT_LABEL: Record<MealSlot, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snack: 'Snack' }
@@ -30,7 +31,7 @@ export function byMealTime<M extends { slot: MealSlot; plannedTime?: string | nu
 }
 export function moveMealDate(date: string, days: number) { return dateKey(addDays(new Date(`${date}T12:00:00`), days)) }
 export function mealDayLabel(date: string, options: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }) {
-  return new Intl.DateTimeFormat(undefined, options).format(new Date(`${date}T12:00:00`))
+  return new Intl.DateTimeFormat(intlLocale(), options).format(new Date(`${date}T12:00:00`))
 }
 export const servingsLabel = (n: number) => `${n} serving${n === 1 ? '' : 's'}`
 // Kitchen fractions for what recipes print (0.5 -> ½, 1.25 -> 1¼); anything else as a plain number.
@@ -38,7 +39,7 @@ const FRACTIONS: Record<string, string> = { '0.125': '⅛', '0.250': '¼', '0.33
 export function formatQuantity(quantity: number): string {
   const whole = Math.floor(quantity)
   const fraction = FRACTIONS[(quantity - whole).toFixed(3)]
-  return fraction ? `${whole || ''}${fraction}` : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(quantity)
+  return fraction ? `${whole || ''}${fraction}` : new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 2 }).format(quantity)
 }
 // Abbreviations read the same for any amount ("2 oz"); words follow the amount ("1 cup", "2 cups").
 const ABBREVIATED = /^(oz|fl\.? ?oz|tsp|tbsp|tbs|lbs?|g|kg|mg|ml|l|doz|pt|qt|gal)\.?$/i

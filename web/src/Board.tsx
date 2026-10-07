@@ -27,6 +27,7 @@ import { leadOf, leadText } from './leadTime.ts'
 import { onMinute } from './minuteTick.ts'
 import { clockTimeZone } from './timezone.ts'
 import { Face } from './Face'
+import { intlLocale } from './i18n.ts'
 
 const REFRESH_MS = 10 * 60_000
 // Auto shows the full Chores and Due soon cards only on a board this big (CSS px); smaller boards get the count tiles.
@@ -273,7 +274,7 @@ export default function Board({ show, onTap }: { show: (e: EventInstance) => boo
           <div className="board-clock-top">
             <div className="board-clock-when">
               <div className="board-time">{formatTime(now, clockTimeZone(tz, device))}</div>
-              <div className="board-date">{new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric', timeZone: clockTimeZone(tz, device) }).format(now)}</div>
+              <div className="board-date">{new Intl.DateTimeFormat(intlLocale(), { weekday: 'long', month: 'long', day: 'numeric', timeZone: clockTimeZone(tz, device) }).format(now)}</div>
             </div>
             {w && (
               <div className="board-weather" role="group" aria-label={`Weather in ${w.location}`}>
